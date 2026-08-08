@@ -99,10 +99,11 @@ def create_app(
 
         try:
             if content_length and content_length.isdigit():
-                if int(content_length) > settings.max_upload_bytes:
+                max_request_bytes = getattr(settings, "max_request_bytes", settings.max_upload_bytes)
+                if int(content_length) > max_request_bytes:
                     raise HTTPException(
                         status_code=413,
-                        detail="Upload exceeds the maximum allowed size",
+                        detail="Request exceeds the maximum allowed size",
                     )
 
             data = await file.read(settings.max_upload_bytes + 1)

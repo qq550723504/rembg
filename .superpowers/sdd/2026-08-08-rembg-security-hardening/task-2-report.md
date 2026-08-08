@@ -248,3 +248,91 @@ Output:
 ### Updated concerns
 
 - Request-level `Content-Length` enforcement now intentionally limits total request size, including multipart framing overhead. That matches the route contract from the task brief, while the bounded read remains the authoritative image-size check.
+
+---
+
+## Fix round 2 - Request limit decoupled from image limit
+
+### Finding
+
+- Comparing raw multipart request `Content-Length` to `max_upload_bytes` rejects valid files near the image limit because multipart framing adds bytes.
+- The approved fix is to add `Settings.max_request_bytes` / `MAX_REQUEST_BYTES` with a default larger than `MAX_UPLOAD_BYTES`, and use it only for request-level `Content-Length`.
+
+### RED 5 - Valid multipart request with framing overhead must still pass
+
+Command:
+
+```powershell
+python -m pytest tests/test_api.py::test_upload_route_allows_valid_file_when_request_framing_exceeds_image_limit -q
+```
+
+Output:
+
+```text
+F
+FAILED tests/test_api.py::test_upload_route_allows_valid_file_when_request_framing_exceeds_image_limit
+assert 413 == 200
+1 failed
+```
+
+### GREEN 4 - Separate request-size and image-size limits
+
+Command:
+
+```powershell
+python -m pytest tests/test_api.py::test_upload_route_allows_valid_file_when_request_framing_exceeds_image_limit -q
+```
+
+Output:
+
+```text
+.
+1 passed in 0.15s
+```
+
+Implementation notes:
+
+- Added `Settings.max_request_bytes` with a default larger than `max_upload_bytes`.
+- Added `MAX_REQUEST_BYTES=26214400` to `.env.example`.
+- The upload route now compares request-level `Content-Length` to `max_request_bytes`.
+- The bounded `file.read(settings.max_upload_bytes + 1)` path remains the authoritative image-size check.
+
+### Focused verification after fix round 2
+
+Command:
+
+```powershell
+python -m pytest tests/test_url_fetcher.py tests/test_api.py -q
+```
+
+Output:
+
+```text
+.......................
+23 passed in 0.32s
+```
+
+### Full verification after fix round 2
+
+Command:
+
+```powershell
+python -m pytest -q
+```
+
+Output:
+
+```text
+.............................................                            [100%]
+45 passed in 0.42s
+```
+
+### Fix-round self-review
+
+- Request-level size enforcement is now decoupled from the image-file limit.
+- The regression test proves a valid multipart upload can exceed `max_upload_bytes` at the HTTP-request level and still succeed when it stays under `max_request_bytes`.
+- Prior allowlist/private-address coverage remains in place.
+
+### Updated concerns after fix round 2
+
+- `max_request_bytes` must remain larger than `max_upload_bytes` in deployed configuration, otherwise multipart framing overhead can still cause valid uploads to be rejected early.

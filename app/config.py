@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     api_key: str = Field(min_length=1)
     model_name: str = "birefnet-general"
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
+    max_request_bytes: int = Field(default=25 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=25_000_000, ge=1)
     url_allowed_hosts: str = ""
     rate_limit_per_minute: int = Field(default=30, ge=1)

@@ -15,11 +15,13 @@ from app.url_fetcher import validate_public_url
 def make_authenticated_upload_client(
     fake_remover,
     max_upload_bytes: int,
+    max_request_bytes: int | None = None,
 ):
     settings = SimpleNamespace(
         api_key="test-key",
         model_name="birefnet-general",
         max_upload_bytes=max_upload_bytes,
+        max_request_bytes=max_request_bytes or max_upload_bytes,
         max_image_pixels=1_000_000,
         url_allowed_hosts="93.184.216.34",
         url_fetch_timeout_seconds=15.0,
@@ -99,6 +101,7 @@ def test_upload_reads_only_configured_limit(settings, fake_remover):
 
 
 def test_upload_rejects_oversized_content_length_before_read(settings, fake_remover):
+    settings.max_request_bytes = settings.max_upload_bytes + 1
     app = create_app(settings=settings, remover=fake_remover)
     endpoint = next(
         route.endpoint
@@ -123,7 +126,7 @@ def test_upload_rejects_oversized_content_length_before_read(settings, fake_remo
                 file=file,
                 model=None,
                 api_key="test-key",
-                content_length=str(settings.max_upload_bytes + 1),
+                content_length=str(settings.max_request_bytes + 1),
             )
         )
 
@@ -136,6 +139,7 @@ def test_upload_route_rejects_oversized_request_content_length(fake_remover, png
         api_key="test-key",
         model_name="birefnet-general",
         max_upload_bytes=1024,
+        max_request_bytes=1024,
         max_image_pixels=1_000_000,
         url_allowed_hosts="93.184.216.34",
         url_fetch_timeout_seconds=15.0,
@@ -154,6 +158,27 @@ def test_upload_route_rejects_oversized_request_content_length(fake_remover, png
 
     assert response.status_code == 413
     assert fake_remover.calls == []
+
+
+def test_upload_route_allows_valid_file_when_request_framing_exceeds_image_limit(
+    fake_remover, png_bytes
+):
+    max_upload_bytes = len(png_bytes)
+    max_request_bytes = 2048
+    client = make_authenticated_upload_client(
+        fake_remover,
+        max_upload_bytes=max_upload_bytes,
+        max_request_bytes=max_request_bytes,
+    )
+
+    response = client.post(
+        "/v1/remove-background",
+        headers={"Content-Length": str(max_upload_bytes + 1)},
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
 
 
 def test_url_endpoint_accepts_json(authenticated_client, fake_fetcher):
