@@ -36,6 +36,12 @@ curl http://localhost:8000/health
 {"status":"ok","model":"birefnet-general"}
 ```
 
+## Web UI
+
+启动容器后打开 `http://localhost:8000/`。在页面填写 `.env` 中的 `API_KEY`，然后可以选择本地图片或输入公网图片 URL。处理成功后页面会显示透明 PNG，并提供下载按钮。
+
+API Key 只在当前页面请求中使用，不会保存到浏览器。
+
 首次请求会下载模型到 Docker Volume `rembg-model-cache`，后续重启会复用缓存。容器只启用一个 Uvicorn worker，避免同一张 GPU 重复加载模型。
 
 ## API 调用
