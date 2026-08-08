@@ -39,6 +39,48 @@ def test_rembg_remover_lazily_creates_one_session(monkeypatch, png_bytes, settin
     assert calls == [("birefnet-general", ["CUDAExecutionProvider", "CPUExecutionProvider"])]
 
 
+def test_rembg_remover_forwards_non_default_options(monkeypatch, png_bytes, settings):
+    captured = {}
+
+    def new_session(model_name, providers):
+        return "session"
+
+    def remove(data, session, force_return_bytes, **options):
+        captured.update(
+            {
+                "data": data,
+                "session": session,
+                "force_return_bytes": force_return_bytes,
+                "options": options,
+            }
+        )
+        return png_bytes
+
+    monkeypatch.setitem(
+        sys.modules,
+        "rembg",
+        SimpleNamespace(new_session=new_session, remove=remove),
+    )
+
+    remover = RembgRemover(settings)
+    result = asyncio.run(
+        remover.remove(
+            b"input",
+            "birefnet-general",
+            alpha_matting=True,
+            post_process_mask=True,
+        )
+    )
+
+    assert result == png_bytes
+    assert captured == {
+        "data": b"input",
+        "session": "session",
+        "force_return_bytes": True,
+        "options": {"alpha_matting": True, "post_process_mask": True},
+    }
+
+
 def test_rembg_remover_sets_u2net_home_from_settings(monkeypatch, png_bytes, settings):
     def new_session(model_name, providers):
         return "session"

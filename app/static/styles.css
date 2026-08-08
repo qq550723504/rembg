@@ -56,6 +56,15 @@ select.text-input { cursor: pointer; }
 .model-hint { min-height: 18px; margin: 7px 0 0; color: var(--muted); font-size: 12px; }
 .text-input::placeholder { color: #637994; }
 .text-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(105, 230, 193, 0.12); }
+.advanced-settings { margin-top: 20px; border: 1px solid var(--border); border-radius: 12px; background: rgba(4, 13, 25, 0.24); }
+.advanced-settings summary { cursor: pointer; padding: 11px 13px; color: #c6d5e6; font-size: 13px; font-weight: 650; }
+.advanced-settings summary span { margin-left: 6px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.advanced-settings-content { display: grid; gap: 14px; border-top: 1px solid var(--border); padding: 14px; }
+.advanced-checkbox { display: flex; cursor: pointer; align-items: center; gap: 9px; color: #c6d5e6; font-size: 13px; }
+.advanced-checkbox input { width: 16px; height: 16px; accent-color: var(--accent-deep); }
+.advanced-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.advanced-field { display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
+.advanced-field .text-input { padding: 9px 10px; font-size: 13px; }
 .source-switch { display: flex; gap: 8px; margin: 21px 0 18px; padding: 0; border: 0; }
 .source-option { flex: 1; cursor: pointer; }
 .source-option input { position: absolute; opacity: 0; }
@@ -115,6 +124,7 @@ select.text-input { cursor: pointer; }
   .controls-section { border-right: 0; border-bottom: 1px solid var(--border); }
   .controls-section, .preview-section { padding: 22px; }
   .preview-grid { grid-template-columns: 1fr; }
+  .advanced-grid { grid-template-columns: 1fr; }
   .empty-result { min-height: 220px; }
   .image-dialog { padding: 12px; }
   .image-dialog-panel { max-width: 92vw; padding: 12px; }

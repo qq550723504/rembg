@@ -965,6 +965,59 @@ def test_url_passes_requested_model_to_remover(
     assert fake_remover.calls[-1][1] == "isnet-anime"
 
 
+def test_upload_passes_removal_options_to_remover(
+    authenticated_client, fake_remover, png_bytes
+):
+    response = authenticated_client.post(
+        "/v1/remove-background",
+        data={
+            "alpha_matting": "true",
+            "alpha_matting_foreground_threshold": "220",
+            "alpha_matting_erode_size": "8",
+            "post_process_mask": "true",
+        },
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert fake_remover.calls[-1][2] == {
+        "alpha_matting": True,
+        "alpha_matting_foreground_threshold": 220,
+        "alpha_matting_erode_size": 8,
+        "post_process_mask": True,
+    }
+
+
+def test_url_passes_removal_options_to_remover(
+    authenticated_client, fake_remover
+):
+    response = authenticated_client.post(
+        "/v1/remove-background/url",
+        json={
+            "image_url": "https://93.184.216.34/input.png",
+            "alpha_matting_background_threshold": 20,
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_remover.calls[-1][2] == {
+        "alpha_matting_background_threshold": 20,
+    }
+
+
+def test_upload_rejects_out_of_range_removal_options(
+    authenticated_client, fake_remover, png_bytes
+):
+    response = authenticated_client.post(
+        "/v1/remove-background",
+        data={"alpha_matting_foreground_threshold": "256"},
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 422
+    assert fake_remover.calls == []
+
+
 def test_unknown_model_is_rejected_before_upload_processing(
     authenticated_client, fake_remover, png_bytes
 ):

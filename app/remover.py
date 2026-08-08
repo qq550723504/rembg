@@ -7,7 +7,12 @@ from typing import ClassVar, NotRequired, Protocol, TypedDict, runtime_checkable
 
 
 class BackgroundRemover(Protocol):
-    async def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+    async def remove(
+        self,
+        data: bytes,
+        model_name: str | None = None,
+        **options: bool | int,
+    ) -> bytes:
         ...
 
 
@@ -44,11 +49,16 @@ class RembgRemover:
         self._active_requests = 0
         self._waiting_requests = 0
 
-    async def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+    async def remove(
+        self,
+        data: bytes,
+        model_name: str | None = None,
+        **options: bool | int,
+    ) -> bytes:
         selected_model = model_name or self.settings.model_name
         await self._acquire_inference_slot()
         worker = asyncio.create_task(
-            asyncio.to_thread(self._remove_sync, data, selected_model)
+            asyncio.to_thread(self._remove_sync, data, selected_model, **options)
         )
         try:
             return await asyncio.shield(worker)
@@ -64,9 +74,14 @@ class RembgRemover:
         finally:
             await self._release_inference_slot()
 
-    def _remove_sync(self, data: bytes, model_name: str | None = None) -> bytes:
+    def _remove_sync(
+        self,
+        data: bytes,
+        model_name: str | None = None,
+        **options: bool | int,
+    ) -> bytes:
         selected_model = model_name or self.settings.model_name
-        return self._remove_with_session(data, selected_model)
+        return self._remove_with_session(data, selected_model, **options)
 
     def readiness(self) -> ReadinessStatus:
         try:
@@ -144,11 +159,17 @@ class RembgRemover:
                 self._sessions.popitem(last=False)
             return self._sessions[model_name]
 
-    def _remove_with_session(self, data: bytes, model_name: str) -> bytes:
+    def _remove_with_session(
+        self,
+        data: bytes,
+        model_name: str,
+        **options: bool | int,
+    ) -> bytes:
         session, remove_function = self._get_session(model_name)
-        return remove_function(
-            data,
-            session=session,
-            force_return_bytes=True,
-        )
+        remove_kwargs = {
+            "session": session,
+            "force_return_bytes": True,
+            **options,
+        }
+        return remove_function(data, **remove_kwargs)
 

@@ -12,10 +12,15 @@ os.environ.setdefault("API_KEY", "test-key")
 class FakeRemover:
     def __init__(self, output: bytes):
         self.output = output
-        self.calls: list[tuple[bytes, str | None]] = []
+        self.calls: list[tuple[bytes, str | None, dict[str, bool | int]]] = []
 
-    def remove(self, data: bytes, model_name: str | None = None) -> bytes:
-        self.calls.append((data, model_name))
+    def remove(
+        self,
+        data: bytes,
+        model_name: str | None = None,
+        **options: bool | int,
+    ) -> bytes:
+        self.calls.append((data, model_name, options))
         return self.output
 
 
