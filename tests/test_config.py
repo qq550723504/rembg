@@ -15,4 +15,4 @@ def test_settings_have_safe_defaults():
 
 def test_settings_require_api_key():
     with pytest.raises(ValidationError):
-        Settings()
+        Settings(api_key="")

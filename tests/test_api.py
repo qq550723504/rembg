@@ -43,11 +43,11 @@ def test_upload_too_large_returns_413(authenticated_client, png_bytes):
 def test_url_endpoint_accepts_json(authenticated_client, fake_fetcher):
     response = authenticated_client.post(
         "/v1/remove-background/url",
-        json={"image_url": "https://example.test/input.png"},
+        json={"image_url": "https://93.184.216.34/input.png"},
     )
 
     assert response.status_code == 200
-    assert fake_fetcher.urls == ["https://example.test/input.png"]
+    assert fake_fetcher.urls == ["https://93.184.216.34/input.png"]
 
 
 def test_url_endpoint_rejects_private_address(authenticated_client):

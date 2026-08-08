@@ -1,9 +1,12 @@
+import os
 from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
 from PIL import Image
 from fastapi.testclient import TestClient
+
+os.environ.setdefault("API_KEY", "test-key")
 
 
 class FakeRemover:
