@@ -12,6 +12,26 @@ from app.main import create_app
 from app.url_fetcher import validate_public_url
 
 
+def make_authenticated_upload_client(
+    fake_remover,
+    max_upload_bytes: int,
+):
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=max_upload_bytes,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    client = TestClient(create_app(settings=settings, remover=fake_remover))
+    client.headers.update({"X-API-Key": "test-key"})
+    return client
+
+
 def test_health_is_public(client):
     response = client.get("/health")
 
@@ -28,8 +48,10 @@ def test_upload_requires_api_key(client, png_bytes):
     assert response.status_code == 401
 
 
-def test_upload_returns_transparent_png(authenticated_client, png_bytes):
-    response = authenticated_client.post(
+def test_upload_returns_transparent_png(fake_remover, png_bytes):
+    client = make_authenticated_upload_client(fake_remover, max_upload_bytes=2048)
+
+    response = client.post(
         "/v1/remove-background",
         files={"file": ("input.png", png_bytes, "image/png")},
     )
@@ -109,6 +131,31 @@ def test_upload_rejects_oversized_content_length_before_read(settings, fake_remo
     assert file.read_calls == 0
 
 
+def test_upload_route_rejects_oversized_request_content_length(fake_remover, png_bytes):
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=1024,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    client = TestClient(create_app(settings=settings, remover=fake_remover))
+    client.headers.update({"X-API-Key": "test-key"})
+
+    response = client.post(
+        "/v1/remove-background",
+        headers={"Content-Length": str(settings.max_upload_bytes + 1)},
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 413
+    assert fake_remover.calls == []
+
+
 def test_url_endpoint_accepts_json(authenticated_client, fake_fetcher):
     response = authenticated_client.post(
         "/v1/remove-background/url",
@@ -163,9 +210,11 @@ def test_models_endpoint_lists_default_and_supported_models(client):
 
 
 def test_upload_passes_requested_model_to_remover(
-    authenticated_client, fake_remover, png_bytes
+    fake_remover, png_bytes
 ):
-    response = authenticated_client.post(
+    client = make_authenticated_upload_client(fake_remover, max_upload_bytes=2048)
+
+    response = client.post(
         "/v1/remove-background",
         files={"file": ("input.png", png_bytes, "image/png")},
         data={"model": "birefnet-portrait"},

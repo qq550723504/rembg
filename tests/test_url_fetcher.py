@@ -17,11 +17,18 @@ def make_fetcher(settings, response: httpx.Response):
     return ImageFetcher(settings, client_factory=factory)
 
 
-def test_validate_public_url_rejects_loopback_and_private_addresses():
-    with pytest.raises(UrlFetchError):
-        validate_public_url("http://127.0.0.1/image.png")
-    with pytest.raises(UrlFetchError):
-        validate_public_url("http://10.0.0.1/image.png")
+def test_validate_public_url_rejects_allowlisted_loopback_and_private_addresses():
+    with pytest.raises(UrlFetchError, match="private or reserved address"):
+        validate_public_url("http://127.0.0.1/image.png", "127.0.0.1")
+    with pytest.raises(UrlFetchError, match="private or reserved address"):
+        validate_public_url("http://10.0.0.1/image.png", "10.0.0.1")
+
+
+def test_validate_public_url_rejects_allowlisted_hostname_resolving_private_address(monkeypatch):
+    monkeypatch.setattr("app.url_fetcher.resolve_host", lambda host: ["10.0.0.5"])
+
+    with pytest.raises(UrlFetchError, match="private or reserved address"):
+        validate_public_url("https://example.test/image.png", "example.test")
 
 
 def test_validate_public_url_rejects_empty_allowlist(monkeypatch):

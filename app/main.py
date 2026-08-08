@@ -51,10 +51,6 @@ def _image_error(error: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="Background removal failed")
 
 
-def _can_trust_request_content_length(file: UploadFile) -> bool:
-    return not hasattr(file, "headers")
-
-
 def create_app(
     settings: Settings | None = None,
     remover: BackgroundRemover | None = None,
@@ -102,11 +98,7 @@ def create_app(
             raise HTTPException(status_code=400, detail="file is required")
 
         try:
-            if (
-                content_length
-                and content_length.isdigit()
-                and _can_trust_request_content_length(file)
-            ):
+            if content_length and content_length.isdigit():
                 if int(content_length) > settings.max_upload_bytes:
                     raise HTTPException(
                         status_code=413,
