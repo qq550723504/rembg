@@ -13,6 +13,7 @@ dependencies = [
     "pillow>=10,<12",
     "pydantic-settings>=2.6,<3",
     "python-multipart>=0.0.9,<1",
+    "slowapi>=0.1.9,<1",
     "uvicorn[standard]>=0.32,<1",
 ]
 

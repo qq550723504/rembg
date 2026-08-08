@@ -4,10 +4,12 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from .auth import require_api_key
 from .config import Settings
@@ -18,7 +20,7 @@ from .image_io import (
     validate_image_bytes,
 )
 from .models import model_options, resolve_model_name
-from .remover import BackgroundRemover, RembgRemover
+from .remover import BackgroundRemover, InferenceBusyError, RembgRemover
 from .url_fetcher import ImageFetcher, UrlFetchError
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,14 @@ def _image_error(error: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="Background removal failed")
 
 
+def _api_key_rate_limit_key(request: Request) -> str:
+    return request.headers.get("X-API-Key", "")
+
+
+def _skip_rate_limit_when_api_key_missing(request: Request) -> bool:
+    return not bool(request.headers.get("X-API-Key"))
+
+
 def create_app(
     settings: Settings | None = None,
     remover: BackgroundRemover | None = None,
@@ -64,6 +74,21 @@ def create_app(
     application = FastAPI(
         title="rembg BiRefNet API",
         version="0.1.0",
+    )
+    limiter = Limiter(key_func=_api_key_rate_limit_key)
+    rate_limit = f"{getattr(settings, 'rate_limit_per_minute', 30)}/minute"
+    application.state.limiter = limiter
+    application.add_exception_handler(
+        RateLimitExceeded,
+        _rate_limit_exceeded_handler,
+    )
+    application.add_exception_handler(
+        InferenceBusyError,
+        lambda request, exc: Response(
+            content=str(exc),
+            status_code=429,
+            headers={"Retry-After": "1"},
+        ),
     )
     application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -83,7 +108,9 @@ def create_app(
         }
 
     @application.post("/v1/remove-background")
+    @limiter.limit(rate_limit, exempt_when=_skip_rate_limit_when_api_key_missing)
     async def remove_background(
+        request: Request,
         file: UploadFile | None = File(default=None),
         model: str | None = Form(default=None),
         api_key: str | None = Header(default=None, alias="X-API-Key"),
@@ -110,6 +137,8 @@ def create_app(
             validate_image_bytes(data, settings)
             result = await _maybe_await(remover.remove(data, model_name))
             return Response(content=ensure_rgba_png(result), media_type="image/png")
+        except InferenceBusyError:
+            raise
         except HTTPException:
             raise
         except Exception as exc:
@@ -119,21 +148,25 @@ def create_app(
             raise _image_error(exc) from exc
 
     @application.post("/v1/remove-background/url")
+    @limiter.limit(rate_limit, exempt_when=_skip_rate_limit_when_api_key_missing)
     async def remove_background_from_url(
-        request: ImageUrlRequest,
+        request: Request,
+        payload: ImageUrlRequest,
         api_key: str | None = Header(default=None, alias="X-API-Key"),
     ) -> Response:
         require_api_key(settings, api_key)
         try:
-            model_name = resolve_model_name(request.model, settings.model_name)
+            model_name = resolve_model_name(payload.model, settings.model_name)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         try:
-            data = await _maybe_await(fetcher.fetch(request.image_url))
+            data = await _maybe_await(fetcher.fetch(payload.image_url))
             validate_image_bytes(data, settings)
             result = await _maybe_await(remover.remove(data, model_name))
             return Response(content=ensure_rgba_png(result), media_type="image/png")
+        except InferenceBusyError:
+            raise
         except HTTPException:
             raise
         except Exception as exc:
