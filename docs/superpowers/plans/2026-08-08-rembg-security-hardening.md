@@ -33,7 +33,7 @@
 - Modify: `tests/test_api.py`
 
 **Interfaces:**
-- `Settings` produces `url_allowed_hosts: str`, `rate_limit_per_minute: int`, `max_pending_requests: int`, and existing limits.
+- `Settings` produces `url_allowed_hosts: str`, `rate_limit_per_minute: int`, `max_pending_requests: int`, `max_request_bytes: int`, and existing limits.
 - `resolve_model_name()` remains the single model allowlist function.
 - `RembgRemover` sets `U2NET_HOME` from `settings.model_cache_dir` before importing rembg.
 - `create_app(settings=...)` rejects an invalid default model with a `ValueError` during application construction.
@@ -116,7 +116,7 @@
 
 - [ ] **Step 6: Implement the bounded read and early content-length check**
 
-  Add an optional `Content-Length` header parameter to the upload route. Reject a value over `max_upload_bytes` before reading. Call `await file.read(settings.max_upload_bytes + 1)` and map the oversized result to `413`.
+  Add an optional `Content-Length` header parameter to the upload route. Reject a value over `settings.max_request_bytes` before reading. Keep `await file.read(settings.max_upload_bytes + 1)` as the authoritative image-file limit and map an oversized result to `413`. Add `MAX_REQUEST_BYTES` to `Settings` and `.env.example` with a default larger than `MAX_UPLOAD_BYTES` to allow multipart overhead.
 
 - [ ] **Step 7: Run focused tests and commit**
 

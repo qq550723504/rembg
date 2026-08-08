@@ -37,7 +37,7 @@ HTTP 客户端设置 `trust_env=False`，避免部署环境中的代理变量绕
 
 ### 2. 请求体和推理资源
 
-上传接口使用 `UploadFile.read(max_upload_bytes + 1)`，超过限制立即返回 `413`，避免把整个上传文件一次性载入 Python 内存。对有 `Content-Length` 的请求增加早期检查；反向代理部署配置同步设置请求体大小上限。
+上传接口使用 `UploadFile.read(max_upload_bytes + 1)`，超过图片文件限制立即返回 `413`，避免把整个上传文件一次性载入 Python 内存。对有 `Content-Length` 的请求使用独立的 `MAX_REQUEST_BYTES` 进行早期请求体检查；该值必须大于 `MAX_UPLOAD_BYTES` 以容纳 multipart 边界和字段开销。反向代理部署配置同步设置请求体大小上限。
 
 推理层保留现有 GPU 并发信号量，并增加有限等待队列。队列满时返回 `429`，避免无限请求占用连接。API Key 限流使用成熟的 FastAPI/Starlette 限流组件；本阶段使用进程内存储，明确只适用于当前单进程部署。
 
