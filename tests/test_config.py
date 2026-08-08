@@ -52,6 +52,15 @@ def test_cache_path_contract_is_consistent_across_readme_env_and_compose():
     assert "U2NET_HOME=/var/lib/rembg" in dockerfile
 
 
+def test_dockerfile_declares_non_root_runtime_and_cache_ownership_contract():
+    dockerfile = read_repo_file("Dockerfile")
+
+    assert "useradd --create-home --shell /usr/sbin/nologin appuser" in dockerfile
+    assert "mkdir -p /var/lib/rembg" in dockerfile
+    assert "chown -R appuser:appuser /app /var/lib/rembg" in dockerfile
+    assert "\nUSER appuser\n" in dockerfile
+
+
 def test_gitignore_ignores_generated_egg_info_artifacts():
     gitignore = read_repo_file(".gitignore")
 
