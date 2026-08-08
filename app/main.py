@@ -4,7 +4,7 @@ import logging
 import secrets
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -29,6 +29,7 @@ from .remover import (
     RembgRemover,
 )
 from .request_limits import RequestBodyLimitMiddleware
+from .removal_options import RemovalOptions
 from .url_fetcher import ImageFetcher, UrlFetchError
 
 logger = logging.getLogger(__name__)
@@ -42,12 +43,38 @@ CONTENT_LENGTH_HEADER = Header(default=None, alias="Content-Length")
 class ImageUrlRequest(BaseModel):
     image_url: str = Field(min_length=1)
     model: str | None = Field(default=None)
+    alpha_matting: bool = False
+    alpha_matting_foreground_threshold: int = Field(default=240, ge=0, le=255)
+    alpha_matting_background_threshold: int = Field(default=10, ge=0, le=255)
+    alpha_matting_erode_size: int = Field(default=10, ge=0, le=255)
+    post_process_mask: bool = False
+
+    def removal_options(self) -> RemovalOptions:
+        return RemovalOptions(
+            alpha_matting=self.alpha_matting,
+            alpha_matting_foreground_threshold=self.alpha_matting_foreground_threshold,
+            alpha_matting_background_threshold=self.alpha_matting_background_threshold,
+            alpha_matting_erode_size=self.alpha_matting_erode_size,
+            post_process_mask=self.post_process_mask,
+        )
 
 
 async def _maybe_await(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
     return value
+
+
+async def _remove_with_options(
+    remover: BackgroundRemover,
+    data: bytes,
+    model_name: str,
+    options: RemovalOptions,
+) -> bytes:
+    kwargs = options.to_kwargs()
+    if kwargs:
+        return await _maybe_await(remover.remove(data, model_name, **kwargs))
+    return await _maybe_await(remover.remove(data, model_name))
 
 
 async def _wait_for_disconnect(request: Request) -> None:
@@ -216,6 +243,11 @@ def create_app(
         request: Request,
         file: UploadFile | None = UPLOAD_FILE,
         model: str | None = UPLOAD_MODEL,
+        alpha_matting: Annotated[bool, Form()] = False,
+        alpha_matting_foreground_threshold: Annotated[int, Form(ge=0, le=255)] = 240,
+        alpha_matting_background_threshold: Annotated[int, Form(ge=0, le=255)] = 10,
+        alpha_matting_erode_size: Annotated[int, Form(ge=0, le=255)] = 10,
+        post_process_mask: Annotated[bool, Form()] = False,
         api_key: str | None = API_KEY_HEADER,
         content_length: str | None = CONTENT_LENGTH_HEADER,
     ) -> Response:
@@ -226,6 +258,13 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if file is None:
             raise HTTPException(status_code=400, detail="file is required")
+        removal_options = RemovalOptions(
+            alpha_matting=alpha_matting,
+            alpha_matting_foreground_threshold=alpha_matting_foreground_threshold,
+            alpha_matting_background_threshold=alpha_matting_background_threshold,
+            alpha_matting_erode_size=alpha_matting_erode_size,
+            post_process_mask=post_process_mask,
+        )
 
         try:
             if content_length and content_length.isdigit():
@@ -239,7 +278,9 @@ def create_app(
             data = await file.read(settings.max_upload_bytes + 1)
             validate_image_bytes(data, settings)
             async def process_upload() -> bytes:
-                result = await _maybe_await(remover.remove(data, model_name))
+                result = await _remove_with_options(
+                    remover, data, model_name, removal_options
+                )
                 return await asyncio.to_thread(ensure_rgba_png, result)
 
             normalized = await _await_or_cancel_on_disconnect(
@@ -273,10 +314,14 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         try:
+            removal_options = payload.removal_options()
+
             async def process_url() -> bytes:
                 data = await _maybe_await(fetcher.fetch(payload.image_url))
                 validate_image_bytes(data, settings)
-                result = await _maybe_await(remover.remove(data, model_name))
+                result = await _remove_with_options(
+                    remover, data, model_name, removal_options
+                )
                 return await asyncio.to_thread(ensure_rgba_png, result)
 
             normalized = await _await_or_cancel_on_disconnect(
