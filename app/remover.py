@@ -1,14 +1,26 @@
 import asyncio
+import importlib
 import os
 import threading
 from collections import OrderedDict
-from typing import Protocol
-
-from .image_io import ensure_rgba_png
+from typing import NotRequired, Protocol, TypedDict, runtime_checkable
 
 
 class BackgroundRemover(Protocol):
     async def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+        ...
+
+
+class ReadinessStatus(TypedDict):
+    available: bool
+    backend: str
+    providers: list[str]
+    reason: NotRequired[str]
+
+
+@runtime_checkable
+class ReadinessAwareRemover(Protocol):
+    def readiness(self) -> ReadinessStatus:
         ...
 
 
@@ -17,6 +29,11 @@ class InferenceBusyError(RuntimeError):
 
 
 class RembgRemover:
+    _execution_providers = [
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+
     def __init__(self, settings):
         self.settings = settings
         self._gpu_max_concurrency = getattr(settings, "gpu_max_concurrency", 1)
@@ -37,7 +54,38 @@ class RembgRemover:
 
     def _remove_sync(self, data: bytes, model_name: str | None = None) -> bytes:
         selected_model = model_name or self.settings.model_name
-        return ensure_rgba_png(self._remove_with_session(data, selected_model))
+        return self._remove_with_session(data, selected_model)
+
+    def readiness(self) -> ReadinessStatus:
+        try:
+            onnxruntime = importlib.import_module("onnxruntime")
+        except ImportError:
+            return {
+                "available": False,
+                "backend": "rembg",
+                "providers": [],
+                "reason": "onnxruntime is not installed",
+            }
+
+        available_providers = list(onnxruntime.get_available_providers())
+        configured_providers = [
+            provider
+            for provider in self._execution_providers
+            if provider in available_providers
+        ]
+        if not configured_providers:
+            return {
+                "available": False,
+                "backend": "rembg",
+                "providers": available_providers,
+                "reason": "no configured execution provider is available",
+            }
+
+        return {
+            "available": True,
+            "backend": "rembg",
+            "providers": available_providers,
+        }
 
     async def _acquire_inference_slot(self) -> None:
         async with self._inference_condition:
@@ -77,10 +125,7 @@ class RembgRemover:
 
             session = new_session(
                 model_name,
-                providers=[
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ],
+                providers=self._execution_providers,
             )
             self._sessions[model_name] = (session, remove)
             while len(self._sessions) > self.settings.model_session_cache_size:

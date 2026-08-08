@@ -65,6 +65,81 @@ def test_health_is_public(client):
     assert response.json()["model"] == "birefnet-general"
 
 
+def test_livez_is_public_and_does_not_require_model_readiness(client):
+    response = client.get("/livez")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_readyz_reports_available_fake_backend_without_exposing_paths(png_bytes):
+    class ReadyRemover:
+        def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+            return png_bytes
+
+        def readiness(self) -> dict[str, object]:
+            return {
+                "available": True,
+                "backend": "fake",
+                "providers": ["CPUExecutionProvider"],
+            }
+
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=2048,
+        max_request_bytes=2048,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        rate_limit_per_minute=30,
+        max_pending_requests=4,
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    client = TestClient(create_app(settings=settings, remover=ReadyRemover()))
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "model": "birefnet-general",
+        "backend": "fake",
+        "providers": ["CPUExecutionProvider"],
+    }
+    assert "cache" not in response.text.lower()
+    assert "/tmp/" not in response.text
+
+
+def test_readyz_returns_503_when_backend_is_unavailable(png_bytes):
+    class NotReadyRemover:
+        def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+            return png_bytes
+
+        def readiness(self) -> dict[str, object]:
+            return {
+                "available": False,
+                "backend": "fake",
+                "providers": [],
+                "reason": "model backend unavailable",
+            }
+
+    client = make_authenticated_upload_client(NotReadyRemover(), max_upload_bytes=2048)
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "unavailable",
+        "model": "birefnet-general",
+        "backend": "fake",
+        "providers": [],
+        "reason": "model backend unavailable",
+    }
+
+
 def test_upload_requires_api_key(client, png_bytes):
     response = client.post(
         "/v1/remove-background",
@@ -110,6 +185,29 @@ def test_upload_returns_transparent_png(fake_remover, png_bytes):
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
     assert Image.open(BytesIO(response.content)).mode == "RGBA"
+
+
+def test_upload_route_is_the_single_png_normalization_boundary(png_bytes):
+    rgb_image = Image.new("RGB", (2, 2), (0, 255, 0))
+    output = BytesIO()
+    rgb_image.save(output, format="JPEG")
+
+    class RawResultRemover:
+        def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+            return output.getvalue()
+
+    client = make_authenticated_upload_client(RawResultRemover(), max_upload_bytes=2048)
+
+    response = client.post(
+        "/v1/remove-background",
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    rendered = Image.open(BytesIO(response.content))
+    assert rendered.format == "PNG"
+    assert rendered.mode == "RGBA"
 
 
 def test_upload_returns_429_when_inference_is_busy(png_bytes):

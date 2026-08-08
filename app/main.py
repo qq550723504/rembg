@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -20,7 +20,12 @@ from .image_io import (
     validate_image_bytes,
 )
 from .models import model_options, resolve_model_name
-from .remover import BackgroundRemover, InferenceBusyError, RembgRemover
+from .remover import (
+    BackgroundRemover,
+    InferenceBusyError,
+    ReadinessAwareRemover,
+    RembgRemover,
+)
 from .url_fetcher import ImageFetcher, UrlFetchError
 
 logger = logging.getLogger(__name__)
@@ -61,6 +66,30 @@ def _skip_rate_limit_when_api_key_missing(request: Request) -> bool:
     return not bool(request.headers.get("X-API-Key"))
 
 
+def _readiness_payload(
+    settings: Settings,
+    remover: BackgroundRemover,
+) -> tuple[int, dict[str, object]]:
+    if isinstance(remover, ReadinessAwareRemover):
+        readiness = remover.readiness()
+    else:
+        readiness = {
+            "available": True,
+            "backend": type(remover).__name__,
+            "providers": [],
+        }
+
+    payload: dict[str, object] = {
+        "status": "ok" if readiness["available"] else "unavailable",
+        "model": settings.model_name,
+        "backend": readiness["backend"],
+        "providers": readiness["providers"],
+    }
+    if "reason" in readiness:
+        payload["reason"] = readiness["reason"]
+    return (200 if readiness["available"] else 503, payload)
+
+
 def create_app(
     settings: Settings | None = None,
     remover: BackgroundRemover | None = None,
@@ -99,6 +128,15 @@ def create_app(
     @application.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "model": settings.model_name}
+
+    @application.get("/livez")
+    async def livez() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @application.get("/readyz")
+    async def readyz() -> JSONResponse:
+        status_code, payload = _readiness_payload(settings, remover)
+        return JSONResponse(content=payload, status_code=status_code)
 
     @application.get("/v1/models")
     async def models() -> dict[str, object]:

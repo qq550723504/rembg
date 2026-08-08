@@ -1,4 +1,5 @@
 import asyncio
+from io import BytesIO
 import sys
 import threading
 from types import SimpleNamespace
@@ -77,6 +78,31 @@ def test_rembg_remover_overrides_existing_u2net_home(monkeypatch, png_bytes, set
     remover._get_session("birefnet-general")
 
     assert sys.modules["os"].environ["U2NET_HOME"] == settings.model_cache_dir
+
+
+def test_remove_sync_returns_raw_rembg_bytes_without_png_normalization(monkeypatch, settings):
+    rgb_image = Image.new("RGB", (2, 2), (0, 0, 255))
+    output = BytesIO()
+    rgb_image.save(output, format="JPEG")
+    raw_result = output.getvalue()
+
+    def new_session(model_name, providers):
+        return "session"
+
+    def remove(data, session, force_return_bytes):
+        return raw_result
+
+    monkeypatch.setitem(
+        sys.modules,
+        "rembg",
+        SimpleNamespace(new_session=new_session, remove=remove),
+    )
+
+    remover = RembgRemover(settings)
+
+    result = remover._remove_sync(b"input", "birefnet-general")
+
+    assert result == raw_result
 
 
 def test_remover_rejects_when_inference_capacity_is_full(
