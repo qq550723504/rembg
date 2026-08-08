@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the current single-process FastAPI and in-process model session design. Add configuration validation and health state at the application boundary, a focused URL policy inside `ImageFetcher`, a bounded asynchronous inference gate inside `RembgRemover`, and the mature `slowapi` limiter for per-API-key request frequency. Keep arbitrary URL fetching disabled unless an explicit host allowlist is configured.
 
-**Tech Stack:** Python 3.11+, FastAPI, Starlette, Pydantic Settings, httpx, Pillow, rembg, slowapi, pytest, Docker Compose, GitHub Actions.
+**Tech Stack:** Python 3.11+, FastAPI, Starlette, Pydantic Settings, aiohttp, Pillow, rembg, slowapi, pytest, Docker Compose, GitHub Actions.
 
 ## Global Constraints
 
@@ -15,6 +15,9 @@
 - Preserve omitted `model` behavior: use `MODEL_NAME`.
 - Keep `/health` public and backward-compatible; add `/livez` and `/readyz` without removing it.
 - URL input is rejected when `URL_ALLOWED_HOSTS` is empty; redirects remain disabled.
+- URL fetching must pin the validated DNS result through the HTTP connector while retaining TLS hostname verification.
+- `MAX_REQUEST_BYTES` is enforced before multipart parsing by ASGI middleware; bounded file reads remain a second layer.
+- API-key rate limiting applies only after successful authentication and shares one scope across both removal routes.
 - The inference queue is process-local and bounded; distributed deployments must use a gateway/shared limiter later.
 - Every production-code behavior change must have a failing test before implementation.
 
@@ -253,3 +256,16 @@
 - [ ] **Step 6: Commit the CI and deployment documentation**
 
   Commit with `git add .github/workflows/test.yml README.md Dockerfile docker-compose.yml pyproject.toml tests/test_config.py && git -c user.name="wei xu" -c user.email="xuweixia@live.com" commit -m "chore: verify rembg production safeguards"`.
+
+---
+
+### Final review fix wave: close security and contract findings
+
+The independent whole-branch review found four important issues: invalid credentials could be rate-limited before returning `401`, the documented limiter scope was not shared across removal routes, request-size enforcement happened after multipart parsing, and DNS validation was vulnerable to a resolve/connect TOCTOU window. The user approved expanding the URL work to a fixed-address resolver.
+
+- Add RED/GREEN regression tests for repeated invalid keys and for one valid key consuming the same limit across upload and URL routes.
+- Run authentication before applying the limiter, while retaining the limiter for valid API keys only.
+- Add pure ASGI request-body limiting before FastAPI multipart parsing, including `Content-Length` and chunked/no-header paths.
+- Replace hostname-only outbound connection behavior with an aiohttp resolver/connector that filters and pins validated public addresses while preserving TLS verification and disabling redirects/environment proxy behavior.
+- Add validation that `MAX_REQUEST_BYTES` is greater than `MAX_UPLOAD_BYTES`, readiness coverage for cache-directory writability, and a pinned Ruff version in CI where compatible.
+- Run the complete supported-runtime verification suite and perform exactly one scoped re-review of this fix wave.

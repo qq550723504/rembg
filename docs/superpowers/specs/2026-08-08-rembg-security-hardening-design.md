@@ -31,13 +31,13 @@
 
 URL 输入默认采用拒绝优先策略：增加 `URL_ALLOWED_HOSTS` 配置。为空时 URL 接口返回明确的配置错误；配置后只允许精确主机名或其子域名规则中明确列出的主机。保留 HTTP/HTTPS、凭据拒绝、端口校验和公网地址校验。
 
-HTTP 客户端设置 `trust_env=False`，避免部署环境中的代理变量绕过应用的 URL 策略。下载过程继续禁止重定向，并把 URL 校验集中到 Fetcher 内部，避免路由层和 Fetcher 重复 DNS 查询。
+HTTP 客户端不读取环境代理配置，下载过程继续禁止重定向，并把 URL 校验集中到 Fetcher 内部。为消除 DNS 校验与实际连接之间的 TOCTOU 窗口，Fetcher 使用成熟异步 HTTP 客户端的自定义 resolver：resolver 只解析一次目标主机，过滤非公网地址，并把通过校验的地址集合固定给连接器使用。TLS 仍使用原始主机名进行证书和 SNI 校验；不关闭证书验证，也不允许代理绕过地址策略。
 
-由于当前服务允许单进程 Docker 部署，本阶段不引入新的网络客户端栈来实现自定义 TLS/SNI 解析器；生产部署仍应通过容器出口网络策略禁止 RFC1918、链路本地、云元数据和其他内部网段。后续如果需要支持任意公网 URL，再单独引入带固定解析结果的成熟 HTTP resolver 实现。
+该固定解析器只解决应用层 DNS 重绑定问题，不能替代生产网络出口控制。部署仍应通过容器出口网络策略禁止 RFC1918、链路本地、云元数据和其他内部网段。
 
 ### 2. 请求体和推理资源
 
-上传接口使用 `UploadFile.read(max_upload_bytes + 1)`，超过图片文件限制立即返回 `413`，避免把整个上传文件一次性载入 Python 内存。对有 `Content-Length` 的请求使用独立的 `MAX_REQUEST_BYTES` 进行早期请求体检查；该值必须大于 `MAX_UPLOAD_BYTES` 以容纳 multipart 边界和字段开销。反向代理部署配置同步设置请求体大小上限。
+上传接口使用 `UploadFile.read(max_upload_bytes + 1)`，超过图片文件限制立即返回 `413`，避免把整个上传文件一次性载入 Python 内存。应用层 ASGI middleware 在 multipart 解析前检查 `MAX_REQUEST_BYTES`：有 `Content-Length` 时立即拒绝，分块请求则在接收 body 时累计并在超过上限后停止转发。该值必须大于 `MAX_UPLOAD_BYTES` 以容纳 multipart 边界和字段开销；反向代理部署配置也应同步设置请求体大小上限。
 
 推理层保留现有 GPU 并发信号量，并增加有限等待队列。队列满时返回 `429`，避免无限请求占用连接。API Key 限流使用成熟的 FastAPI/Starlette 限流组件；本阶段使用进程内存储，明确只适用于当前单进程部署。
 
