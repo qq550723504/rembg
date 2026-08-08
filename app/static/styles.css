@@ -49,6 +49,9 @@ h2 { margin-bottom: 0; font-size: 20px; letter-spacing: -0.02em; }
 .model-chip, .preview-badge { border: 1px solid rgba(105, 230, 193, 0.28); border-radius: 999px; padding: 4px 9px; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; }
 .field-label { display: block; margin-bottom: 8px; color: #c6d5e6; font-size: 13px; font-weight: 650; }
 .text-input { width: 100%; border: 1px solid var(--border); border-radius: 11px; outline: none; padding: 12px 14px; color: var(--text); background: rgba(4, 13, 25, 0.5); transition: border-color 160ms, box-shadow 160ms; }
+.model-label { margin-top: 18px; }
+select.text-input { cursor: pointer; }
+.model-hint { min-height: 18px; margin: 7px 0 0; color: var(--muted); font-size: 12px; }
 .text-input::placeholder { color: #637994; }
 .text-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(105, 230, 193, 0.12); }
 .source-switch { display: flex; gap: 8px; margin: 21px 0 18px; padding: 0; border: 0; }

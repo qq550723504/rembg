@@ -7,6 +7,8 @@ const state = {
 
 const form = document.querySelector("#remove-form");
 const apiKeyInput = document.querySelector("#api-key");
+const modelSelect = document.querySelector("#model-select");
+const modelHint = document.querySelector("#model-hint");
 const fileInput = document.querySelector("#file-input");
 const fileName = document.querySelector("#file-name");
 const urlInput = document.querySelector("#url-input");
@@ -21,6 +23,35 @@ const resultPanel = document.querySelector("#result-panel");
 const resultEmpty = document.querySelector("#result-empty");
 const resultPreview = document.querySelector("#result-preview");
 const downloadButton = document.querySelector("#download-button");
+const fallbackModels = [
+  { name: "birefnet-general", description: "通用场景", is_default: true },
+];
+
+function renderModels(payload) {
+  modelSelect.replaceChildren();
+  payload.models.forEach((model) => {
+    const option = document.createElement("option");
+    option.value = model.name;
+    option.textContent = `${model.name} · ${model.description}`;
+    modelSelect.append(option);
+  });
+  modelSelect.value = payload.default_model;
+  const selected = payload.models.find((model) => model.name === modelSelect.value) || payload.models[0];
+  if (selected) {
+    modelHint.textContent = selected.description;
+  }
+}
+
+async function loadModels() {
+  try {
+    const response = await fetch("/v1/models");
+    if (!response.ok) throw new Error("模型列表加载失败");
+    renderModels(await response.json());
+  } catch (_) {
+    renderModels({ default_model: "birefnet-general", models: fallbackModels });
+    setStatus("模型列表加载失败，已使用默认模型。", "error");
+  }
+}
 
 function setStatus(message, kind = "idle") {
   statusMessage.textContent = message;
@@ -80,6 +111,7 @@ async function parseError(response) {
 
 function setBusy(isBusy) {
   removeButton.disabled = isBusy;
+  modelSelect.disabled = isBusy;
   removeButton.classList.toggle("is-loading", isBusy);
   document.querySelectorAll("#remove-form input").forEach((input) => {
     input.disabled = isBusy || (input.id === "file-input" && state.source !== "file") || (input.id === "url-input" && state.source !== "url");
@@ -103,6 +135,7 @@ async function removeBackground(event) {
     }
     const body = new FormData();
     body.append("file", state.file);
+    body.append("model", modelSelect.value);
     request = fetch("/v1/remove-background", { method: "POST", headers: { "X-API-Key": apiKey }, body });
   } else {
     const imageUrl = urlInput.value.trim();
@@ -111,7 +144,7 @@ async function removeBackground(event) {
       urlInput.focus();
       return;
     }
-    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl }) });
+    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value }) });
   }
 
   setBusy(true);
@@ -152,6 +185,11 @@ dropZone.addEventListener("keydown", (event) => {
 }));
 dropZone.addEventListener("drop", (event) => setSelectedFile(event.dataTransfer.files[0]));
 form.addEventListener("submit", removeBackground);
+modelSelect.addEventListener("change", () => {
+  const selected = modelSelect.options[modelSelect.selectedIndex];
+  modelHint.textContent = selected ? selected.textContent.split(" · ").slice(1).join(" · ") : "";
+});
+loadModels();
 window.addEventListener("beforeunload", () => {
   clearObjectUrl("originalUrl");
   clearObjectUrl("resultUrl");

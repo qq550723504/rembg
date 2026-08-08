@@ -32,6 +32,12 @@
           <label class="field-label" for="api-key">API Key</label>
           <input id="api-key" class="text-input" type="password" autocomplete="off" placeholder="输入服务端 API Key" required>
 
+          <label class="field-label model-label" for="model-select">推理模型</label>
+          <select id="model-select" class="text-input" required>
+            <option value="birefnet-general">birefnet-general · 通用场景</option>
+          </select>
+          <p id="model-hint" class="model-hint">正在加载可用模型……</p>
+
           <fieldset class="source-switch">
             <legend class="sr-only">图片来源</legend>
             <label class="source-option">
