@@ -1,4 +1,5 @@
 .venv/
+.worktrees/
 __pycache__/
 .pytest_cache/
 *.py[cod]
@@ -7,3 +8,5 @@ __pycache__/
 *.jpg
 *.jpeg
 *.webp
+*.egg-info/
+
