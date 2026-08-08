@@ -68,11 +68,16 @@ def _validated_url_parts(
     if host not in allowed_hostnames:
         raise UrlFetchError("Image URL host is not in the configured allowlist")
 
-    if resolve_dns:
-        try:
-            addresses = [_ for _ in [host] if ipaddress.ip_address(host)]
-        except ValueError:
-            addresses = resolve_host(host)
+    try:
+        literal_address = ipaddress.ip_address(host)
+    except ValueError:
+        literal_address = None
+
+    if literal_address is not None:
+        if not _is_public_ip(str(literal_address)):
+            raise UrlFetchError("Image URL host resolves to a private or reserved address")
+    elif resolve_dns:
+        addresses = resolve_host(host)
 
         if not addresses or not all(_is_public_ip(address) for address in addresses):
             raise UrlFetchError("Image URL host resolves to a private or reserved address")

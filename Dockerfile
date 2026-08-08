@@ -14,14 +14,18 @@ WORKDIR /app
 
 COPY pyproject.toml ./
 COPY app ./app
+COPY docker-entrypoint.sh /usr/local/bin/rembg-entrypoint.sh
 
 RUN python3 -m pip install --break-system-packages --no-build-isolation ".[gpu]"
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
     && mkdir -p /var/lib/rembg \
-    && chown -R appuser:appuser /app /var/lib/rembg
+    && chown -R appuser:appuser /app /var/lib/rembg \
+    && chmod 755 /usr/local/bin/rembg-entrypoint.sh
 
 USER appuser
+
+ENTRYPOINT ["/usr/local/bin/rembg-entrypoint.sh"]
 
 EXPOSE 8000
 

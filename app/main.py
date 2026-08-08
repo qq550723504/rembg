@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 import secrets
@@ -209,7 +210,8 @@ def create_app(
             data = await file.read(settings.max_upload_bytes + 1)
             validate_image_bytes(data, settings)
             result = await _maybe_await(remover.remove(data, model_name))
-            return Response(content=ensure_rgba_png(result), media_type="image/png")
+            normalized = await asyncio.to_thread(ensure_rgba_png, result)
+            return Response(content=normalized, media_type="image/png")
         except InferenceBusyError:
             raise
         except HTTPException:
@@ -237,7 +239,8 @@ def create_app(
             data = await _maybe_await(fetcher.fetch(payload.image_url))
             validate_image_bytes(data, settings)
             result = await _maybe_await(remover.remove(data, model_name))
-            return Response(content=ensure_rgba_png(result), media_type="image/png")
+            normalized = await asyncio.to_thread(ensure_rgba_png, result)
+            return Response(content=normalized, media_type="image/png")
         except InferenceBusyError:
             raise
         except HTTPException:

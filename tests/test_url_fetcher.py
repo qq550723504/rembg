@@ -161,6 +161,23 @@ def test_fetcher_client_disables_environment_proxy(settings):
     assert captured_kwargs["trust_env"] is False
 
 
+def test_fetcher_rejects_private_literal_ip_before_opening_client(settings):
+    settings.url_allowed_hosts = "127.0.0.1"
+    opened = False
+
+    def factory(**kwargs):
+        nonlocal opened
+        opened = True
+        raise AssertionError("private literal IP must be rejected before opening client")
+
+    fetcher = ImageFetcher(settings, session_factory=factory)
+
+    with pytest.raises(UrlFetchError, match="private or reserved address"):
+        asyncio.run(fetcher.fetch("http://127.0.0.1/image.png"))
+
+    assert opened is False
+
+
 def test_fetcher_rejects_redirects(settings, monkeypatch):
     monkeypatch.setattr("app.url_fetcher.resolve_host", lambda host: ["93.184.216.34"])
     fetcher = make_fetcher(

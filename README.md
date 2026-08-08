@@ -48,6 +48,8 @@ API Key 只在当前页面请求中使用，不会保存到浏览器。
 
 容器默认以非 root 用户 `appuser` 运行，模型缓存目录默认是 `MODEL_CACHE_DIR=/var/lib/rembg`，并通过 Docker Volume `rembg-model-cache` 挂载到同一路径。首次使用某个模型会写入该目录，后续请求会复用缓存。容器只启用一个 Uvicorn worker，避免同一张 GPU 重复加载模型。
 
+升级旧版本时无需手动迁移这个 named volume：旧配置中的 `/root/.u2net` 会在容器启动入口自动映射到新的 `/var/lib/rembg` 路径，保留原有缓存内容并兼容非 root 运行用户。
+
 ## API 调用
 
 ### 上传文件

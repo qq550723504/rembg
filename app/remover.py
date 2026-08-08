@@ -47,8 +47,20 @@ class RembgRemover:
     async def remove(self, data: bytes, model_name: str | None = None) -> bytes:
         selected_model = model_name or self.settings.model_name
         await self._acquire_inference_slot()
+        worker = asyncio.create_task(
+            asyncio.to_thread(self._remove_sync, data, selected_model)
+        )
         try:
-            return await asyncio.to_thread(self._remove_sync, data, selected_model)
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            while not worker.done():
+                try:
+                    await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    continue
+            if not worker.cancelled():
+                worker.exception()
+            raise
         finally:
             await self._release_inference_slot()
 

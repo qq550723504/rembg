@@ -43,6 +43,7 @@ def test_readme_documents_runtime_contracts():
     assert "/readyz" in readme
     assert "process-local" in readme
     assert "MODEL_CACHE_DIR=/var/lib/rembg" in readme
+    assert "/root/.u2net" in readme
 
 
 def test_cache_path_contract_is_consistent_across_readme_env_and_compose():
@@ -64,6 +65,17 @@ def test_dockerfile_declares_non_root_runtime_and_cache_ownership_contract():
     assert "mkdir -p /var/lib/rembg" in dockerfile
     assert "chown -R appuser:appuser /app /var/lib/rembg" in dockerfile
     assert "\nUSER appuser\n" in dockerfile
+
+
+def test_container_entrypoint_remaps_legacy_root_cache_path():
+    dockerfile = read_repo_file("Dockerfile")
+    entrypoint = read_repo_file("docker-entrypoint.sh")
+
+    assert "COPY docker-entrypoint.sh /usr/local/bin/rembg-entrypoint.sh" in dockerfile
+    assert 'ENTRYPOINT ["/usr/local/bin/rembg-entrypoint.sh"]' in dockerfile
+    assert '"${MODEL_CACHE_DIR:-}" = "/root/.u2net"' in entrypoint
+    assert "MODEL_CACHE_DIR=/var/lib/rembg" in entrypoint
+    assert "U2NET_HOME=/var/lib/rembg" in entrypoint
 
 
 def test_ci_pins_ruff_version():

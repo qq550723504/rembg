@@ -209,3 +209,46 @@ def test_remover_releases_waiting_capacity_when_waiter_is_cancelled(
 
     assert entered == 2
 
+
+def test_remover_keeps_inference_slot_until_cancelled_worker_finishes(
+    monkeypatch, png_bytes, settings
+):
+    settings.gpu_max_concurrency = 1
+    settings.max_pending_requests = 0
+    started = asyncio.Event()
+    release = threading.Event()
+
+    def new_session(model_name, providers):
+        return "session"
+
+    def remove(data, session, force_return_bytes):
+        started_loop.call_soon_threadsafe(started.set)
+        release.wait(timeout=1)
+        return png_bytes
+
+    async def exercise():
+        nonlocal started_loop
+        started_loop = asyncio.get_running_loop()
+        monkeypatch.setitem(
+            sys.modules,
+            "rembg",
+            SimpleNamespace(new_session=new_session, remove=remove),
+        )
+
+        remover = RembgRemover(settings)
+        request = asyncio.create_task(remover.remove(b"input"))
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+        request.cancel()
+        await asyncio.sleep(0.05)
+        assert not request.done()
+        assert remover._active_requests == 1
+
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(request, timeout=1)
+        assert remover._active_requests == 0
+
+    started_loop = None
+    asyncio.run(exercise())
+

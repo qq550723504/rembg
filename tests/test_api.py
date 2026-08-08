@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from io import BytesIO
 from types import SimpleNamespace
 
@@ -318,6 +319,33 @@ def test_upload_route_is_the_single_png_normalization_boundary(png_bytes):
     rendered = Image.open(BytesIO(response.content))
     assert rendered.format == "PNG"
     assert rendered.mode == "RGBA"
+
+
+def test_png_normalization_runs_off_the_event_loop(png_bytes, monkeypatch):
+    route_thread_id = None
+    normalization_thread_ids = []
+
+    class RawResultRemover:
+        def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+            nonlocal route_thread_id
+            route_thread_id = threading.get_ident()
+            return png_bytes
+
+    def normalize(data: bytes) -> bytes:
+        normalization_thread_ids.append(threading.get_ident())
+        return data
+
+    monkeypatch.setattr("app.main.ensure_rgba_png", normalize)
+    client = make_authenticated_upload_client(RawResultRemover(), max_upload_bytes=2048)
+
+    response = client.post(
+        "/v1/remove-background",
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert normalization_thread_ids
+    assert normalization_thread_ids[0] != route_thread_id
 
 
 def test_upload_returns_429_when_inference_is_busy(png_bytes):
