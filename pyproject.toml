@@ -22,6 +22,7 @@ test = [
 ]
 gpu = [
     "rembg[gpu,cli]>=2.0.67,<3",
+    "onnxruntime-gpu>=1.23.2,<1.27",
 ]
 
 [tool.pytest.ini_options]
