@@ -314,6 +314,43 @@ def test_rate_limiter_rejects_second_upload_request(fake_remover, png_bytes):
     assert second.status_code == 429
 
 
+def test_rate_limiter_rejects_second_url_request(fake_remover, png_bytes):
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=2048,
+        max_request_bytes=2048,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        rate_limit_per_minute=1,
+        max_pending_requests=4,
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    client = TestClient(
+        create_app(
+            settings=settings,
+            remover=fake_remover,
+            fetcher=SimpleNamespace(fetch=lambda url: png_bytes),
+        )
+    )
+    client.headers.update({"X-API-Key": "test-key"})
+
+    first = client.post(
+        "/v1/remove-background/url",
+        json={"image_url": "https://93.184.216.34/input.png"},
+    )
+    second = client.post(
+        "/v1/remove-background/url",
+        json={"image_url": "https://93.184.216.34/input.png"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+
 def test_url_endpoint_accepts_json(authenticated_client, fake_fetcher):
     response = authenticated_client.post(
         "/v1/remove-background/url",
