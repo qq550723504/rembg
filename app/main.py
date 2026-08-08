@@ -57,6 +57,7 @@ def create_app(
     fetcher: ImageFetcher | None = None,
 ) -> FastAPI:
     settings = settings or _load_default_settings()
+    resolve_model_name(None, settings.model_name)
     remover = remover or RembgRemover(settings)
     fetcher = fetcher or ImageFetcher(settings)
 

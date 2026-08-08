@@ -37,7 +37,7 @@ class RembgRemover:
                 self._sessions[model_name] = cached
                 return cached
 
-            os.environ.setdefault("U2NET_HOME", self.settings.model_cache_dir)
+            os.environ["U2NET_HOME"] = self.settings.model_cache_dir
             from rembg import new_session, remove
 
             session = new_session(

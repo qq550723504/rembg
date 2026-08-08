@@ -1,6 +1,10 @@
 from io import BytesIO
 
+import pytest
 from PIL import Image
+
+from app.config import Settings
+from app.main import create_app
 
 
 def test_health_is_public(client):
@@ -109,3 +113,8 @@ def test_unknown_model_is_rejected_before_upload_processing(
     assert response.status_code == 400
     assert "Unsupported model" in response.json()["detail"]
     assert fake_remover.calls == []
+
+
+def test_create_app_rejects_invalid_default_model():
+    with pytest.raises(ValueError, match="Unsupported model: unknown"):
+        create_app(settings=Settings(api_key="secret", model_name="unknown"))
