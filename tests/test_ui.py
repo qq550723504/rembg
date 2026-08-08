@@ -54,3 +54,12 @@ def test_static_javascript_supports_abort_and_large_preview(client):
     assert 'event.key === "Escape"' in response.text
     assert "originalPreviewTrigger" in response.text
     assert "resultPreviewTrigger" in response.text
+
+
+def test_static_javascript_keeps_image_dialog_keyboard_modal(client):
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "previewOpener" in response.text
+    assert 'event.key !== "Tab"' in response.text
+    assert "opener.focus()" in response.text

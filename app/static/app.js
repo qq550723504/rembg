@@ -32,6 +32,7 @@ const imageDialogBackdrop = document.querySelector("#image-dialog-backdrop");
 const dialogClose = document.querySelector("#dialog-close");
 const dialogImage = document.querySelector("#dialog-image");
 const dialogError = document.querySelector("#dialog-error");
+let previewOpener = null;
 const fallbackModels = [
   { name: "birefnet-general", description: "通用场景", is_default: true },
 ];
@@ -88,8 +89,13 @@ function clearDialogError() {
   dialogError.hidden = true;
 }
 
-function openPreview(url, altText) {
+function getDialogFocusables() {
+  return Array.from(imageDialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+}
+
+function openPreview(url, altText, opener = document.activeElement) {
   if (!url) return;
+  previewOpener = opener;
   clearDialogError();
   dialogImage.hidden = false;
   dialogImage.src = url;
@@ -100,11 +106,14 @@ function openPreview(url, altText) {
 }
 
 function closePreview() {
+  const opener = previewOpener;
+  previewOpener = null;
   imageDialog.hidden = true;
   document.body.classList.remove("dialog-open");
   dialogImage.removeAttribute("src");
   dialogImage.alt = "";
   clearDialogError();
+  if (opener && opener.isConnected) opener.focus();
 }
 
 function setSource(source) {
@@ -242,12 +251,26 @@ dropZone.addEventListener("keydown", (event) => {
   dropZone.classList.remove("is-dragging");
 }));
 dropZone.addEventListener("drop", (event) => setSelectedFile(event.dataTransfer.files[0]));
-originalPreviewTrigger.addEventListener("click", () => openPreview(state.originalUrl, originalPreview.alt));
-resultPreviewTrigger.addEventListener("click", () => openPreview(state.resultUrl, resultPreview.alt));
+originalPreviewTrigger.addEventListener("click", () => openPreview(state.originalUrl, originalPreview.alt, originalPreviewTrigger));
+resultPreviewTrigger.addEventListener("click", () => openPreview(state.resultUrl, resultPreview.alt, resultPreviewTrigger));
 dialogClose.addEventListener("click", closePreview);
 imageDialogBackdrop.addEventListener("click", closePreview);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !imageDialog.hidden) closePreview();
+  if (event.key !== "Tab" || imageDialog.hidden) return;
+
+  const focusables = getDialogFocusables();
+  if (focusables.length === 0) return;
+  const firstFocusable = focusables[0];
+  const lastFocusable = focusables.at(-1);
+  const outsideDialog = !imageDialog.contains(document.activeElement);
+  if (event.shiftKey && (outsideDialog || document.activeElement === firstFocusable)) {
+    event.preventDefault();
+    lastFocusable.focus();
+  } else if (!event.shiftKey && (outsideDialog || document.activeElement === lastFocusable)) {
+    event.preventDefault();
+    firstFocusable.focus();
+  }
 });
 dialogImage.addEventListener("error", () => {
   if (imageDialog.hidden) return;
