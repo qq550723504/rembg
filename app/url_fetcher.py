@@ -14,6 +14,13 @@ class UrlFetchError(ValueError):
     """The URL is unsafe or could not be fetched as an image."""
 
 
+def _parse_allowed_hosts(allowed_hosts: str) -> set[str]:
+    hosts = {host.strip().rstrip(".").lower() for host in allowed_hosts.split(",") if host.strip()}
+    if not hosts:
+        raise UrlFetchError("Image URL host is not in the configured allowlist")
+    return hosts
+
+
 def resolve_host(host: str) -> list[str]:
     try:
         results = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
@@ -34,7 +41,7 @@ def _is_public_ip(value: str) -> bool:
     )
 
 
-def validate_public_url(url: str) -> None:
+def validate_public_url(url: str, allowed_hosts: str = "") -> None:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise UrlFetchError("Only HTTP and HTTPS image URLs are supported")
@@ -47,7 +54,11 @@ def validate_public_url(url: str) -> None:
     if port is not None and not 1 <= port <= 65535:
         raise UrlFetchError("Image URL contains an invalid port")
 
-    host = parsed.hostname
+    host = parsed.hostname.rstrip(".").lower()
+    allowed_hostnames = _parse_allowed_hosts(allowed_hosts)
+    if host not in allowed_hostnames:
+        raise UrlFetchError("Image URL host is not in the configured allowlist")
+
     try:
         addresses = [_ for _ in [host] if ipaddress.ip_address(host)]
     except ValueError:
@@ -67,11 +78,12 @@ class ImageFetcher:
         async with self.client_factory(
             follow_redirects=False,
             timeout=self.settings.url_fetch_timeout_seconds,
+            trust_env=False,
         ) as client:
             yield client
 
     async def fetch(self, url: str) -> bytes:
-        validate_public_url(url)
+        validate_public_url(url, self.settings.url_allowed_hosts)
 
         async with self._client() as client:
             try:

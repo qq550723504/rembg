@@ -19,7 +19,7 @@ from .image_io import (
 )
 from .models import model_options, resolve_model_name
 from .remover import BackgroundRemover, RembgRemover
-from .url_fetcher import ImageFetcher, UrlFetchError, validate_public_url
+from .url_fetcher import ImageFetcher, UrlFetchError
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -49,6 +49,10 @@ def _image_error(error: Exception) -> HTTPException:
     if isinstance(error, (ImageInputError, UrlFetchError)):
         return HTTPException(status_code=400, detail=str(error))
     return HTTPException(status_code=500, detail="Background removal failed")
+
+
+def _can_trust_request_content_length(file: UploadFile) -> bool:
+    return not hasattr(file, "headers")
 
 
 def create_app(
@@ -87,6 +91,7 @@ def create_app(
         file: UploadFile | None = File(default=None),
         model: str | None = Form(default=None),
         api_key: str | None = Header(default=None, alias="X-API-Key"),
+        content_length: str | None = Header(default=None, alias="Content-Length"),
     ) -> Response:
         require_api_key(settings, api_key)
         try:
@@ -97,7 +102,18 @@ def create_app(
             raise HTTPException(status_code=400, detail="file is required")
 
         try:
-            data = await file.read()
+            if (
+                content_length
+                and content_length.isdigit()
+                and _can_trust_request_content_length(file)
+            ):
+                if int(content_length) > settings.max_upload_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Upload exceeds the maximum allowed size",
+                    )
+
+            data = await file.read(settings.max_upload_bytes + 1)
             validate_image_bytes(data, settings)
             result = await _maybe_await(remover.remove(data, model_name))
             return Response(content=ensure_rgba_png(result), media_type="image/png")
@@ -121,7 +137,6 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         try:
-            validate_public_url(request.image_url)
             data = await _maybe_await(fetcher.fetch(request.image_url))
             validate_image_bytes(data, settings)
             result = await _maybe_await(remover.remove(data, model_name))
