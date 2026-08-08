@@ -1,8 +1,7 @@
-import asyncio
 import ipaddress
 import socket
+from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import Callable
 from urllib.parse import urlparse
 
 import httpx
@@ -15,7 +14,11 @@ class UrlFetchError(ValueError):
 
 
 def _parse_allowed_hosts(allowed_hosts: str) -> set[str]:
-    hosts = {host.strip().rstrip(".").lower() for host in allowed_hosts.split(",") if host.strip()}
+    hosts = {
+        host.strip().rstrip(".").lower()
+        for host in allowed_hosts.split(",")
+        if host.strip()
+    }
     if not hosts:
         raise UrlFetchError("Image URL host is not in the configured allowlist")
     return hosts
@@ -119,3 +122,4 @@ class ImageFetcher:
         except (ImageInputError, ImageTooLargeError) as exc:
             raise UrlFetchError("URL did not return a supported image") from exc
         return data
+

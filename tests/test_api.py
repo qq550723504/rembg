@@ -1,11 +1,11 @@
-from io import BytesIO
 import asyncio
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
-from PIL import Image
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from PIL import Image
 from starlette.requests import Request
 
 from app.config import Settings
@@ -550,3 +550,4 @@ def test_unknown_model_is_rejected_before_upload_processing(
 def test_create_app_rejects_invalid_default_model():
     with pytest.raises(ValueError, match="Unsupported model: unknown"):
         create_app(settings=Settings(api_key="secret", model_name="unknown"))
+

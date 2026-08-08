@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - rembg-model-cache:/root/.u2net
+      - rembg-model-cache:/var/lib/rembg
     deploy:
       resources:
         reservations:
@@ -24,3 +24,4 @@ services:
 
 volumes:
   rembg-model-cache:
+

@@ -29,6 +29,12 @@ gpu = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+filterwarnings = [
+    # Starlette 1.5 emits this on TestClient import before app code runs.
+    # Keep the filter narrow until the FastAPI/Starlette stack removes the compatibility boundary.
+    "ignore:Using `httpx` with `starlette\\.testclient` is deprecated; install `httpx2` instead\\.:starlette.exceptions.StarletteDeprecationWarning",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+

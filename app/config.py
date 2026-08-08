@@ -20,4 +20,5 @@ class Settings(BaseSettings):
     url_fetch_timeout_seconds: float = Field(default=15.0, gt=0)
     gpu_max_concurrency: int = Field(default=1, ge=1)
     model_session_cache_size: int = Field(default=2, ge=1)
-    model_cache_dir: str = "/root/.u2net"
+    model_cache_dir: str = "/var/lib/rembg"
+

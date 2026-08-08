@@ -1,12 +1,11 @@
 import asyncio
-from io import BytesIO
 import sys
 import threading
+from io import BytesIO
 from types import SimpleNamespace
 
-from PIL import Image
-
 import pytest
+from PIL import Image
 
 import app.remover as remover_module
 from app.remover import RembgRemover
@@ -209,3 +208,4 @@ def test_remover_releases_waiting_capacity_when_waiter_is_cancelled(
     asyncio.run(exercise())
 
     assert entered == 2
+

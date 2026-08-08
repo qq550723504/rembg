@@ -24,17 +24,21 @@ docker compose ps
 docker compose logs -f api
 ```
 
-健康检查：
+服务保留 `/health` 兼容探活；容器 healthcheck 使用 `/readyz`，并额外提供轻量级 `/livez`：
 
 ```powershell
 curl http://localhost:8000/health
+curl http://localhost:8000/livez
+curl http://localhost:8000/readyz
 ```
 
-预期返回：
+`/health` 预期返回：
 
 ```json
 {"status":"ok","model":"birefnet-general"}
 ```
+
+`/readyz` 会在模型后端不可用时返回 `503`，用于区分“进程活着”与“推理已就绪”。
 
 ## Web UI
 
@@ -42,7 +46,7 @@ curl http://localhost:8000/health
 
 API Key 只在当前页面请求中使用，不会保存到浏览器。
 
-首次使用某个模型会下载到 Docker Volume `rembg-model-cache`，后续请求会复用缓存。容器只启用一个 Uvicorn worker，避免同一张 GPU 重复加载模型。
+容器默认以非 root 用户 `appuser` 运行，模型缓存目录默认是 `MODEL_CACHE_DIR=/var/lib/rembg`，并通过 Docker Volume `rembg-model-cache` 挂载到同一路径。首次使用某个模型会写入该目录，后续请求会复用缓存。容器只启用一个 Uvicorn worker，避免同一张 GPU 重复加载模型。
 
 ## API 调用
 
@@ -78,32 +82,38 @@ curl.exe http://localhost:8000/v1/models
 
 URL 输入只允许 HTTP/HTTPS，并拒绝回环、私有、链路本地、保留地址和带用户凭据的 URL。服务不会跟随重定向，以降低 SSRF 风险。
 
+要启用 URL 接口，必须把 `URL_ALLOWED_HOSTS` 配置为逗号分隔的精确主机名白名单；空值表示禁用 URL 输入，而不是“允许所有外链”。
+
 ## 配置
 
 配置项见 `.env.example`。重点配置：
 
 - `API_KEY`：必填；文件和 URL 接口都需要通过 `X-API-Key` 传入。
 - `MODEL_NAME`：默认 `birefnet-general`。
-- `MAX_UPLOAD_BYTES`：默认 20 MiB。
+- `MAX_UPLOAD_BYTES`：默认 20 MiB，限制图片内容本身大小。
+- `MAX_REQUEST_BYTES`：默认 25 MiB，限制整个 multipart / HTTP 请求体大小，避免外围封装开销绕过上传限制。
 - `MAX_IMAGE_PIXELS`：默认 25MP。
+- `URL_ALLOWED_HOSTS`：逗号分隔的精确主机名白名单；为空时禁用 URL 下载。
+- `RATE_LIMIT_PER_MINUTE`：默认每个 `X-API-Key` 每分钟 30 次，作用范围是当前进程内的受保护去背景接口。
+- `MAX_PENDING_REQUESTS`：默认 4，表示当前进程内允许等待 GPU 执行槽位的额外请求数。
 - `GPU_MAX_CONCURRENCY`：默认 1。显存不足时不要直接提高这个值。
 - `MODEL_SESSION_CACHE_SIZE`：默认 2，同时缓存的模型 session 数量；模型越大，显存占用越高。
+- `MODEL_CACHE_DIR`：默认 `/var/lib/rembg`，Dockerfile 中也会把 `U2NET_HOME` 指向同一路径。
+
+> `slowapi` 和推理并发控制都是 process-local 的：如果未来改成多 worker 或多副本部署，需要在入口网关或共享存储/共享限流组件层面补齐全局限制。
 
 ## 验证
 
-本地单元测试不加载模型：
+自动化验证不要求 GPU；CI 只跑测试、编译检查、Ruff 和 `docker compose config`：
 
 ```powershell
-python -m pytest -q
-```
-
-Compose 配置校验：
-
-```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m compileall -q app scripts
+.\.venv\Scripts\python.exe -m ruff check app tests scripts
 docker compose config
 ```
 
-真实 GPU 调用：
+下面的 GPU 烟测是单独的手工验证，不属于 CI：
 
 ```powershell
 docker compose up -d --build
@@ -119,8 +129,10 @@ docker compose logs api
 - `401`：API Key 缺失或错误。
 - `400`：图片格式、URL 或请求参数无效。
 - `413`：图片超过大小或像素限制。
+- `429`：超过当前进程的限流或推理排队能力。
 - `500`：模型推理失败。
 
 ## 许可证
 
 本项目服务代码使用 MIT 兼容方式组织。`rembg` 代码和具体模型权重的许可证是分开的；商业部署前请确认所下载的 BiRefNet checkpoint、依赖和数据授权条件。
+

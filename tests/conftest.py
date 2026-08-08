@@ -3,8 +3,8 @@ from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
-from PIL import Image
 from fastapi.testclient import TestClient
+from PIL import Image
 
 os.environ.setdefault("API_KEY", "test-key")
 
@@ -78,3 +78,4 @@ def client(settings, fake_remover, fake_fetcher):
 def authenticated_client(client):
     client.headers.update({"X-API-Key": "test-key"})
     return client
+

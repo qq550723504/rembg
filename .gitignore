@@ -8,3 +8,5 @@ __pycache__/
 *.jpg
 *.jpeg
 *.webp
+*.egg-info/
+

@@ -1,6 +1,5 @@
 import inspect
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +29,10 @@ from .url_fetcher import ImageFetcher, UrlFetchError
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
+UPLOAD_FILE = File(default=None)
+UPLOAD_MODEL = Form(default=None)
+API_KEY_HEADER = Header(default=None, alias="X-API-Key")
+CONTENT_LENGTH_HEADER = Header(default=None, alias="Content-Length")
 
 
 class ImageUrlRequest(BaseModel):
@@ -149,10 +152,10 @@ def create_app(
     @limiter.limit(rate_limit, exempt_when=_skip_rate_limit_when_api_key_missing)
     async def remove_background(
         request: Request,
-        file: UploadFile | None = File(default=None),
-        model: str | None = Form(default=None),
-        api_key: str | None = Header(default=None, alias="X-API-Key"),
-        content_length: str | None = Header(default=None, alias="Content-Length"),
+        file: UploadFile | None = UPLOAD_FILE,
+        model: str | None = UPLOAD_MODEL,
+        api_key: str | None = API_KEY_HEADER,
+        content_length: str | None = CONTENT_LENGTH_HEADER,
     ) -> Response:
         require_api_key(settings, api_key)
         try:
@@ -190,7 +193,7 @@ def create_app(
     async def remove_background_from_url(
         request: Request,
         payload: ImageUrlRequest,
-        api_key: str | None = Header(default=None, alias="X-API-Key"),
+        api_key: str | None = API_KEY_HEADER,
     ) -> Response:
         require_api_key(settings, api_key)
         try:
@@ -217,3 +220,4 @@ def create_app(
 
 
 app = create_app()
+

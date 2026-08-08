@@ -69,7 +69,7 @@ def test_fetcher_client_disables_environment_proxy(settings):
 
     async def open_client():
         async with fetcher._client():
-            return None
+            return
 
     asyncio.run(open_client())
 
@@ -96,3 +96,4 @@ def test_fetcher_rejects_non_image_bytes(settings, monkeypatch):
 
     with pytest.raises(UrlFetchError):
         asyncio.run(fetcher.fetch("https://example.test/image.png"))
+

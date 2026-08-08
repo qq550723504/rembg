@@ -3,7 +3,7 @@ import importlib
 import os
 import threading
 from collections import OrderedDict
-from typing import NotRequired, Protocol, TypedDict, runtime_checkable
+from typing import ClassVar, NotRequired, Protocol, TypedDict, runtime_checkable
 
 
 class BackgroundRemover(Protocol):
@@ -29,7 +29,7 @@ class InferenceBusyError(RuntimeError):
 
 
 class RembgRemover:
-    _execution_providers = [
+    _execution_providers: ClassVar[list[str]] = [
         "CUDAExecutionProvider",
         "CPUExecutionProvider",
     ]
@@ -139,3 +139,4 @@ class RembgRemover:
             session=session,
             force_return_bytes=True,
         )
+
