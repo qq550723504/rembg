@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rembg-birefnet-api"
+version = "0.1.0"
+description = "FastAPI background removal service powered by rembg and BiRefNet"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "httpx>=0.27,<1",
+    "pillow>=10,<12",
+    "pydantic-settings>=2.6,<3",
+    "python-multipart>=0.0.9,<1",
+    "uvicorn[standard]>=0.32,<1",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8,<9",
+]
+gpu = [
+    "rembg[gpu,cli]>=2.0.67,<3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
