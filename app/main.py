@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
@@ -17,6 +17,7 @@ from .image_io import (
     ensure_rgba_png,
     validate_image_bytes,
 )
+from .models import model_options, resolve_model_name
 from .remover import BackgroundRemover, RembgRemover
 from .url_fetcher import ImageFetcher, UrlFetchError, validate_public_url
 
@@ -26,6 +27,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 class ImageUrlRequest(BaseModel):
     image_url: str = Field(min_length=1)
+    model: str | None = Field(default=None)
 
 
 async def _maybe_await(value: Any) -> Any:
@@ -72,19 +74,31 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok", "model": settings.model_name}
 
+    @application.get("/v1/models")
+    async def models() -> dict[str, object]:
+        return {
+            "default_model": settings.model_name,
+            "models": model_options(settings.model_name),
+        }
+
     @application.post("/v1/remove-background")
     async def remove_background(
         file: UploadFile | None = File(default=None),
+        model: str | None = Form(default=None),
         api_key: str | None = Header(default=None, alias="X-API-Key"),
     ) -> Response:
         require_api_key(settings, api_key)
+        try:
+            model_name = resolve_model_name(model, settings.model_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if file is None:
             raise HTTPException(status_code=400, detail="file is required")
 
         try:
             data = await file.read()
             validate_image_bytes(data, settings)
-            result = await _maybe_await(remover.remove(data))
+            result = await _maybe_await(remover.remove(data, model_name))
             return Response(content=ensure_rgba_png(result), media_type="image/png")
         except HTTPException:
             raise
@@ -100,12 +114,16 @@ def create_app(
         api_key: str | None = Header(default=None, alias="X-API-Key"),
     ) -> Response:
         require_api_key(settings, api_key)
+        try:
+            model_name = resolve_model_name(request.model, settings.model_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         try:
             validate_public_url(request.image_url)
             data = await _maybe_await(fetcher.fetch(request.image_url))
             validate_image_bytes(data, settings)
-            result = await _maybe_await(remover.remove(data))
+            result = await _maybe_await(remover.remove(data, model_name))
             return Response(content=ensure_rgba_png(result), media_type="image/png")
         except HTTPException:
             raise
