@@ -16,6 +16,7 @@ def test_static_assets_are_served(client):
     assert css.status_code == 200
     assert css.headers["content-type"].startswith("text/css")
     assert "drop-zone" in css.text
+    assert "[hidden]" in css.text
     assert javascript.status_code == 200
     assert javascript.headers["content-type"].startswith("text/javascript")
     assert "/v1/remove-background" in javascript.text
