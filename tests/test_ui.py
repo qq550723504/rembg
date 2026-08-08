@@ -10,6 +10,20 @@ def test_homepage_serves_ui(client):
     assert 'id="model-select"' in response.text
 
 
+def test_homepage_includes_advanced_removal_controls(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    for control_id in (
+        "alpha-matting",
+        "alpha-matting-foreground-threshold",
+        "alpha-matting-background-threshold",
+        "alpha-matting-erode-size",
+        "post-process-mask",
+    ):
+        assert f'id="{control_id}"' in response.text
+
+
 def test_static_assets_are_served(client):
     css = client.get("/static/styles.css")
     javascript = client.get("/static/app.js")
@@ -24,6 +38,23 @@ def test_static_assets_are_served(client):
     assert "/v1/remove-background/url" in javascript.text
     assert "/v1/models" in javascript.text
     assert '"model"' in javascript.text
+
+
+def test_static_javascript_serializes_advanced_removal_options(client):
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    javascript = response.text
+    for field in (
+        "alpha_matting",
+        "alpha_matting_foreground_threshold",
+        "alpha_matting_background_threshold",
+        "alpha_matting_erode_size",
+        "post_process_mask",
+    ):
+        assert field in javascript
+    assert "getRemovalOptions" in javascript
+    assert 'body.append("alpha_matting"' in javascript
 
 
 def test_existing_api_contract_remains_available(client):

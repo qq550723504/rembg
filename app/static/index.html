@@ -38,6 +38,34 @@
           </select>
           <p id="model-hint" class="model-hint">正在加载可用模型……</p>
 
+          <details class="advanced-settings">
+            <summary>高级参数 <span>边缘与遮罩后处理</span></summary>
+            <div class="advanced-settings-content">
+              <label class="advanced-checkbox">
+                <input id="alpha-matting" type="checkbox">
+                <span>启用 Alpha Matting</span>
+              </label>
+              <div class="advanced-grid">
+                <label class="advanced-field" for="alpha-matting-foreground-threshold">
+                  <span>前景阈值</span>
+                  <input id="alpha-matting-foreground-threshold" class="text-input" type="number" min="0" max="255" value="240" inputmode="numeric">
+                </label>
+                <label class="advanced-field" for="alpha-matting-background-threshold">
+                  <span>背景阈值</span>
+                  <input id="alpha-matting-background-threshold" class="text-input" type="number" min="0" max="255" value="10" inputmode="numeric">
+                </label>
+                <label class="advanced-field" for="alpha-matting-erode-size">
+                  <span>腐蚀尺寸</span>
+                  <input id="alpha-matting-erode-size" class="text-input" type="number" min="0" max="255" value="10" inputmode="numeric">
+                </label>
+              </div>
+              <label class="advanced-checkbox">
+                <input id="post-process-mask" type="checkbox">
+                <span>后处理遮罩</span>
+              </label>
+            </div>
+          </details>
+
           <fieldset class="source-switch">
             <legend class="sr-only">图片来源</legend>
             <label class="source-option">

@@ -10,6 +10,11 @@ const form = document.querySelector("#remove-form");
 const apiKeyInput = document.querySelector("#api-key");
 const modelSelect = document.querySelector("#model-select");
 const modelHint = document.querySelector("#model-hint");
+const alphaMattingInput = document.querySelector("#alpha-matting");
+const foregroundThresholdInput = document.querySelector("#alpha-matting-foreground-threshold");
+const backgroundThresholdInput = document.querySelector("#alpha-matting-background-threshold");
+const erodeSizeInput = document.querySelector("#alpha-matting-erode-size");
+const postProcessMaskInput = document.querySelector("#post-process-mask");
 const fileInput = document.querySelector("#file-input");
 const fileName = document.querySelector("#file-name");
 const urlInput = document.querySelector("#url-input");
@@ -130,6 +135,16 @@ function setSource(source) {
   setStatus(isFile ? "选择本地图片后开始。" : "输入图片 URL 后开始。");
 }
 
+function getRemovalOptions() {
+  return {
+    alpha_matting: alphaMattingInput.checked,
+    alpha_matting_foreground_threshold: Number(foregroundThresholdInput.value),
+    alpha_matting_background_threshold: Number(backgroundThresholdInput.value),
+    alpha_matting_erode_size: Number(erodeSizeInput.value),
+    post_process_mask: postProcessMaskInput.checked,
+  };
+}
+
 function setSelectedFile(file) {
   if (!file || !file.type.startsWith("image/")) {
     state.file = null;
@@ -195,6 +210,12 @@ async function removeBackground(event) {
     const body = new FormData();
     body.append("file", state.file);
     body.append("model", modelSelect.value);
+    const removalOptions = getRemovalOptions();
+    body.append("alpha_matting", String(removalOptions.alpha_matting));
+    body.append("alpha_matting_foreground_threshold", String(removalOptions.alpha_matting_foreground_threshold));
+    body.append("alpha_matting_background_threshold", String(removalOptions.alpha_matting_background_threshold));
+    body.append("alpha_matting_erode_size", String(removalOptions.alpha_matting_erode_size));
+    body.append("post_process_mask", String(removalOptions.post_process_mask));
     controller = new AbortController();
     state.requestController = controller;
     request = fetch("/v1/remove-background", { method: "POST", headers: { "X-API-Key": apiKey }, body, signal: controller.signal });
@@ -207,7 +228,7 @@ async function removeBackground(event) {
     }
     controller = new AbortController();
     state.requestController = controller;
-    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value }), signal: controller.signal });
+    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value, ...getRemovalOptions() }), signal: controller.signal });
   }
 
   setBusy(true);
