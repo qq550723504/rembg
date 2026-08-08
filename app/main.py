@@ -57,7 +57,7 @@ async def _wait_for_disconnect(request: Request) -> None:
             return
 
 
-async def _await_or_cancel_on_disconnect(request: Request, operation: Any) -> Any:
+async def _await_or_cancel_on_disconnect(request: Request, operation: Any) -> Any | None:
     operation_task = asyncio.ensure_future(operation)
     disconnect_task = asyncio.create_task(_wait_for_disconnect(request))
     try:
@@ -70,7 +70,7 @@ async def _await_or_cancel_on_disconnect(request: Request, operation: Any) -> An
 
         operation_task.cancel()
         await asyncio.gather(operation_task, return_exceptions=True)
-        raise asyncio.CancelledError
+        return None
     finally:
         disconnect_task.cancel()
         await asyncio.gather(disconnect_task, return_exceptions=True)
@@ -246,6 +246,8 @@ def create_app(
                 request,
                 process_upload(),
             )
+            if normalized is None:
+                return Response(status_code=204)
             return Response(content=normalized, media_type="image/png")
         except InferenceBusyError:
             raise
@@ -281,6 +283,8 @@ def create_app(
                 request,
                 process_url(),
             )
+            if normalized is None:
+                return Response(status_code=204)
             return Response(content=normalized, media_type="image/png")
         except InferenceBusyError:
             raise

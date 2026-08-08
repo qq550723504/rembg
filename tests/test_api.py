@@ -219,8 +219,8 @@ def test_asgi_disconnect_cancels_waiting_removal_and_releases_capacity(
             await wait_until(lambda: remover._waiting_requests == 1)
 
             waiting.disconnect()
-            with pytest.raises(asyncio.CancelledError):
-                await asyncio.wait_for(waiting_task, timeout=1)
+            await asyncio.wait_for(waiting_task, timeout=1)
+            assert waiting.sent_messages[0]["status"] == 204
             assert remover._waiting_requests == 0
 
             replacement_task = asyncio.create_task(
