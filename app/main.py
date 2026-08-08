@@ -1,10 +1,12 @@
 import inspect
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
 from .auth import require_api_key
@@ -19,6 +21,7 @@ from .remover import BackgroundRemover, RembgRemover
 from .url_fetcher import ImageFetcher, UrlFetchError, validate_public_url
 
 logger = logging.getLogger(__name__)
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 class ImageUrlRequest(BaseModel):
@@ -59,6 +62,11 @@ def create_app(
         title="rembg BiRefNet API",
         version="0.1.0",
     )
+    application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @application.get("/", include_in_schema=False)
+    async def homepage() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
 
     @application.get("/health")
     async def health() -> dict[str, str]:

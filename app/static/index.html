@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
+    <title>抠图工作台 · rembg + BiRefNet</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="brand-mark" aria-hidden="true">✦</div>
+        <div>
+          <p class="eyebrow">GPU BACKGROUND REMOVAL</p>
+          <h1>抠图工作台</h1>
+          <p class="subtitle">使用 rembg + BiRefNet，快速生成透明背景 PNG。</p>
+        </div>
+      </header>
+
+      <form id="remove-form" class="workspace-card">
+        <section class="controls-section" aria-labelledby="controls-title">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">01 / 输入</p>
+              <h2 id="controls-title">选择图片来源</h2>
+            </div>
+            <span class="model-chip">BiRefNet</span>
+          </div>
+
+          <label class="field-label" for="api-key">API Key</label>
+          <input id="api-key" class="text-input" type="password" autocomplete="off" placeholder="输入服务端 API Key" required>
+
+          <fieldset class="source-switch">
+            <legend class="sr-only">图片来源</legend>
+            <label class="source-option">
+              <input type="radio" name="source" value="file" checked>
+              <span>本地图片</span>
+            </label>
+            <label class="source-option">
+              <input type="radio" name="source" value="url">
+              <span>图片 URL</span>
+            </label>
+          </fieldset>
+
+          <div id="file-panel" class="source-panel">
+            <label id="drop-zone" class="drop-zone" for="file-input" tabindex="0">
+              <span class="upload-icon" aria-hidden="true">↑</span>
+              <strong>拖放图片到这里</strong>
+              <span>或点击选择 JPG、PNG、WEBP</span>
+              <input id="file-input" type="file" accept="image/*">
+              <span id="file-name" class="file-name">尚未选择文件</span>
+            </label>
+          </div>
+
+          <div id="url-panel" class="source-panel is-hidden">
+            <label class="field-label" for="url-input">图片地址</label>
+            <input id="url-input" class="text-input" type="url" inputmode="url" placeholder="https://example.com/image.jpg" disabled>
+            <p class="field-hint">仅支持服务端允许访问的公网 HTTP/HTTPS 图片地址。</p>
+          </div>
+
+          <button id="remove-button" class="primary-button" type="submit">
+            <span class="button-label">开始抠图</span>
+            <span class="button-spinner" aria-hidden="true"></span>
+          </button>
+          <p id="status-message" class="status-message" aria-live="polite">准备就绪，选择图片后开始。</p>
+        </section>
+
+        <section class="preview-section" aria-labelledby="preview-title">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">02 / 结果</p>
+              <h2 id="preview-title">预览与下载</h2>
+            </div>
+          </div>
+
+          <div class="preview-grid">
+            <article class="preview-card">
+              <div class="preview-card-heading">
+                <span>原图</span>
+                <span class="preview-badge">SOURCE</span>
+              </div>
+              <div class="preview-frame checkerboard">
+                <div class="empty-preview" id="original-empty">选择图片后预览</div>
+                <img id="original-preview" alt="原始图片预览" hidden>
+              </div>
+            </article>
+
+            <article id="result-panel" class="preview-card result-card" hidden>
+              <div class="preview-card-heading">
+                <span>抠图结果</span>
+                <span class="preview-badge result-badge">PNG</span>
+              </div>
+              <div class="preview-frame checkerboard">
+                <img id="result-preview" alt="透明背景抠图结果">
+              </div>
+              <a id="download-button" class="download-button" download="removed-background.png" href="#">下载透明 PNG <span aria-hidden="true">↓</span></a>
+            </article>
+
+            <article id="result-empty" class="preview-card empty-result">
+              <div class="empty-result-icon" aria-hidden="true">◇</div>
+              <strong>结果会显示在这里</strong>
+              <span>透明背景 PNG 可直接下载。</span>
+            </article>
+          </div>
+        </section>
+      </form>
+
+      <footer class="footer-note">本地处理工作台 · API Key 仅用于当前请求</footer>
+    </main>
+  </body>
+</html>
