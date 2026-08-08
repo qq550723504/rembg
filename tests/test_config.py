@@ -13,6 +13,10 @@ def test_settings_have_safe_defaults():
     assert settings.gpu_max_concurrency == 1
 
 
+def test_settings_have_safe_model_cache_default():
+    assert Settings(api_key="secret").model_session_cache_size == 2
+
+
 def test_settings_require_api_key():
     with pytest.raises(ValidationError):
         Settings(api_key="")

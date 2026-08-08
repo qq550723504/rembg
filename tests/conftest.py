@@ -12,10 +12,10 @@ os.environ.setdefault("API_KEY", "test-key")
 class FakeRemover:
     def __init__(self, output: bytes):
         self.output = output
-        self.calls: list[bytes] = []
+        self.calls: list[tuple[bytes, str | None]] = []
 
-    def remove(self, data: bytes) -> bytes:
-        self.calls.append(data)
+    def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+        self.calls.append((data, model_name))
         return self.output
 
 
@@ -51,6 +51,7 @@ def settings():
         url_fetch_timeout_seconds=15.0,
         gpu_max_concurrency=1,
         model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
     )
 
 
