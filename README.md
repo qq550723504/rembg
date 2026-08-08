@@ -70,7 +70,7 @@ $apiKey = (Get-Content .env | Where-Object { $_ -like 'API_KEY=*' }).Substring(8
 curl.exe -X POST http://localhost:8000/v1/remove-background/url `
   -H "X-API-Key: $apiKey" `
   -H "Content-Type: application/json" `
-  -d '{"image_url":"https://example.com/product.jpg","model":"birefnet-general-lite"}' `
+  -d '{"image_url":"https://example.com/product.jpg","model":"birefnet-general-lite","alpha_matting":true,"alpha_matting_foreground_threshold":220,"post_process_mask":true}' `
   -o .\result.png
 ```
 
@@ -81,6 +81,18 @@ curl.exe http://localhost:8000/v1/models
 ```
 
 请求中的 `model` 字段可省略，省略时使用 `.env` 中的 `MODEL_NAME`。未知模型会返回 `400`。
+
+### 高级抠图参数
+
+文件上传和 URL 请求都支持以下可选参数。省略时使用 rembg 默认值，因此不会改变旧客户端的行为：
+
+- `alpha_matting`：是否启用 Alpha Matting，默认 `false`。
+- `alpha_matting_foreground_threshold`：前景阈值，范围 `0..255`，默认 `240`。
+- `alpha_matting_background_threshold`：背景阈值，范围 `0..255`，默认 `10`。
+- `alpha_matting_erode_size`：腐蚀尺寸，范围 `0..255`，默认 `10`。
+- `post_process_mask`：是否对遮罩执行后处理，默认 `false`。
+
+Web UI 中可以展开“高级参数”设置这些值。服务仍然统一返回 RGBA PNG；这些选项只影响抠图和遮罩边缘处理。
 
 URL 输入只允许 HTTP/HTTPS，并拒绝回环、私有、链路本地、保留地址和带用户凭据的 URL。服务不会跟随重定向，不读取环境代理，并通过 aiohttp resolver/connector 固定已通过公网过滤的解析地址；TLS 仍按原始主机名做 SNI 和证书校验，以降低 SSRF 和 DNS rebinding 风险。
 

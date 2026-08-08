@@ -22,6 +22,7 @@ from .image_io import (
     validate_image_bytes,
 )
 from .models import model_options, resolve_model_name
+from .removal_options import RemovalOptions
 from .remover import (
     BackgroundRemover,
     InferenceBusyError,
@@ -29,7 +30,6 @@ from .remover import (
     RembgRemover,
 )
 from .request_limits import RequestBodyLimitMiddleware
-from .removal_options import RemovalOptions
 from .url_fetcher import ImageFetcher, UrlFetchError
 
 logger = logging.getLogger(__name__)
