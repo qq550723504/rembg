@@ -50,6 +50,35 @@ async def _maybe_await(value: Any) -> Any:
     return value
 
 
+async def _wait_for_disconnect(request: Request) -> None:
+    while True:
+        message = await request.receive()
+        if message["type"] == "http.disconnect":
+            return
+
+
+async def _await_or_cancel_on_disconnect(request: Request, operation: Any) -> Any | None:
+    operation_task = asyncio.ensure_future(operation)
+    disconnect_task = asyncio.create_task(_wait_for_disconnect(request))
+    try:
+        done, _ = await asyncio.wait(
+            {operation_task, disconnect_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if operation_task in done:
+            return await operation_task
+
+        operation_task.cancel()
+        await asyncio.gather(operation_task, return_exceptions=True)
+        return None
+    finally:
+        disconnect_task.cancel()
+        await asyncio.gather(disconnect_task, return_exceptions=True)
+        if not operation_task.done():
+            operation_task.cancel()
+            await asyncio.gather(operation_task, return_exceptions=True)
+
+
 def _load_default_settings() -> Settings:
     try:
         return Settings()
@@ -209,8 +238,16 @@ def create_app(
 
             data = await file.read(settings.max_upload_bytes + 1)
             validate_image_bytes(data, settings)
-            result = await _maybe_await(remover.remove(data, model_name))
-            normalized = await asyncio.to_thread(ensure_rgba_png, result)
+            async def process_upload() -> bytes:
+                result = await _maybe_await(remover.remove(data, model_name))
+                return await asyncio.to_thread(ensure_rgba_png, result)
+
+            normalized = await _await_or_cancel_on_disconnect(
+                request,
+                process_upload(),
+            )
+            if normalized is None:
+                return Response(status_code=204)
             return Response(content=normalized, media_type="image/png")
         except InferenceBusyError:
             raise
@@ -236,10 +273,18 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         try:
-            data = await _maybe_await(fetcher.fetch(payload.image_url))
-            validate_image_bytes(data, settings)
-            result = await _maybe_await(remover.remove(data, model_name))
-            normalized = await asyncio.to_thread(ensure_rgba_png, result)
+            async def process_url() -> bytes:
+                data = await _maybe_await(fetcher.fetch(payload.image_url))
+                validate_image_bytes(data, settings)
+                result = await _maybe_await(remover.remove(data, model_name))
+                return await asyncio.to_thread(ensure_rgba_png, result)
+
+            normalized = await _await_or_cancel_on_disconnect(
+                request,
+                process_url(),
+            )
+            if normalized is None:
+                return Response(status_code=204)
             return Response(content=normalized, media_type="image/png")
         except InferenceBusyError:
             raise

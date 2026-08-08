@@ -31,3 +31,61 @@ def test_existing_api_contract_remains_available(client):
 
     assert response.status_code == 200
     assert response.json()["model"] == "birefnet-general"
+
+
+def test_homepage_includes_cancel_control_and_image_dialog(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'id="image-dialog"' in response.text
+    assert 'role="dialog"' in response.text
+    assert 'aria-modal="true"' in response.text
+    assert 'id="dialog-close"' in response.text
+    assert 'id="original-preview-trigger"' in response.text
+    assert 'id="result-preview-trigger"' in response.text
+
+
+def test_static_javascript_supports_abort_and_large_preview(client):
+    response = client.get("/static/app.js")
+    assert response.status_code == 200
+    assert "AbortController" in response.text
+    assert "signal: controller.signal" in response.text
+    assert 'error.name === "AbortError"' in response.text
+    assert "openPreview" in response.text
+    assert 'event.key === "Escape"' in response.text
+    assert "originalPreviewTrigger" in response.text
+    assert "resultPreviewTrigger" in response.text
+
+
+def test_static_javascript_keeps_image_dialog_keyboard_modal(client):
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "previewOpener" in response.text
+    assert 'event.key !== "Tab"' in response.text
+    assert "opener.focus()" in response.text
+
+
+def test_static_javascript_closes_dialog_before_revoking_displayed_result(client):
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    javascript = response.text
+    clear_object_url = javascript[
+        javascript.index("function clearObjectUrl") : javascript.index(
+            "function setOriginalPreview"
+        )
+    ]
+    open_preview = javascript[
+        javascript.index("function openPreview") : javascript.index(
+            "function closePreview"
+        )
+    ]
+    close_preview = javascript[
+        javascript.index("function closePreview") : javascript.index(
+            "function setSource"
+        )
+    ]
+
+    assert "if (dialogUrl === state[key]) closePreview();" in clear_object_url
+    assert "dialogUrl = url;" in open_preview
+    assert "dialogUrl = null;" in close_preview

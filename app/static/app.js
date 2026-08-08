@@ -3,6 +3,7 @@ const state = {
   file: null,
   originalUrl: null,
   resultUrl: null,
+  requestController: null,
 };
 
 const form = document.querySelector("#remove-form");
@@ -16,13 +17,23 @@ const filePanel = document.querySelector("#file-panel");
 const urlPanel = document.querySelector("#url-panel");
 const dropZone = document.querySelector("#drop-zone");
 const removeButton = document.querySelector("#remove-button");
+const buttonLabel = removeButton.querySelector(".button-label");
 const statusMessage = document.querySelector("#status-message");
 const originalPreview = document.querySelector("#original-preview");
+const originalPreviewTrigger = document.querySelector("#original-preview-trigger");
 const originalEmpty = document.querySelector("#original-empty");
 const resultPanel = document.querySelector("#result-panel");
 const resultEmpty = document.querySelector("#result-empty");
 const resultPreview = document.querySelector("#result-preview");
+const resultPreviewTrigger = document.querySelector("#result-preview-trigger");
 const downloadButton = document.querySelector("#download-button");
+const imageDialog = document.querySelector("#image-dialog");
+const imageDialogBackdrop = document.querySelector("#image-dialog-backdrop");
+const dialogClose = document.querySelector("#dialog-close");
+const dialogImage = document.querySelector("#dialog-image");
+const dialogError = document.querySelector("#dialog-error");
+let previewOpener = null;
+let dialogUrl = null;
 const fallbackModels = [
   { name: "birefnet-general", description: "通用场景", is_default: true },
 ];
@@ -60,17 +71,53 @@ function setStatus(message, kind = "idle") {
 
 function clearObjectUrl(key) {
   if (state[key]) {
+    if (dialogUrl === state[key]) closePreview();
     URL.revokeObjectURL(state[key]);
     state[key] = null;
   }
 }
 
 function setOriginalPreview(blobOrFile) {
+  closePreview();
   clearObjectUrl("originalUrl");
   state.originalUrl = URL.createObjectURL(blobOrFile);
   originalPreview.src = state.originalUrl;
-  originalPreview.hidden = false;
+  originalPreviewTrigger.hidden = false;
   originalEmpty.hidden = true;
+}
+
+function clearDialogError() {
+  dialogError.textContent = "";
+  dialogError.hidden = true;
+}
+
+function getDialogFocusables() {
+  return Array.from(imageDialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+}
+
+function openPreview(url, altText, opener = document.activeElement) {
+  if (!url) return;
+  previewOpener = opener;
+  dialogUrl = url;
+  clearDialogError();
+  dialogImage.hidden = false;
+  dialogImage.src = url;
+  dialogImage.alt = altText;
+  imageDialog.hidden = false;
+  document.body.classList.add("dialog-open");
+  dialogClose.focus();
+}
+
+function closePreview() {
+  const opener = previewOpener;
+  previewOpener = null;
+  dialogUrl = null;
+  imageDialog.hidden = true;
+  document.body.classList.remove("dialog-open");
+  dialogImage.removeAttribute("src");
+  dialogImage.alt = "";
+  clearDialogError();
+  if (opener && opener.isConnected) opener.focus();
 }
 
 function setSource(source) {
@@ -94,6 +141,7 @@ function setSelectedFile(file) {
   fileName.textContent = file.name;
   setOriginalPreview(file);
   resultPanel.hidden = true;
+  resultPreviewTrigger.hidden = true;
   resultEmpty.hidden = false;
   clearObjectUrl("resultUrl");
   setStatus("图片已准备好，可以开始抠图。", "success");
@@ -110,9 +158,11 @@ async function parseError(response) {
 }
 
 function setBusy(isBusy) {
-  removeButton.disabled = isBusy;
   modelSelect.disabled = isBusy;
   removeButton.classList.toggle("is-loading", isBusy);
+  removeButton.classList.toggle("is-cancel", isBusy);
+  buttonLabel.textContent = isBusy ? "取消抠图" : "开始抠图";
+  removeButton.setAttribute("aria-label", isBusy ? "取消抠图" : "开始抠图");
   document.querySelectorAll("#remove-form input").forEach((input) => {
     input.disabled = isBusy || (input.id === "file-input" && state.source !== "file") || (input.id === "url-input" && state.source !== "url");
   });
@@ -120,6 +170,14 @@ function setBusy(isBusy) {
 
 async function removeBackground(event) {
   event.preventDefault();
+  if (state.requestController) {
+    state.requestController.abort();
+    state.requestController = null;
+    setStatus("已取消本次抠图。", "idle");
+    setBusy(false);
+    return;
+  }
+
   const apiKey = apiKeyInput.value.trim();
   if (!apiKey) {
     setStatus("请先填写 API Key。", "error");
@@ -127,6 +185,7 @@ async function removeBackground(event) {
     return;
   }
 
+  let controller;
   let request;
   if (state.source === "file") {
     if (!state.file) {
@@ -136,7 +195,9 @@ async function removeBackground(event) {
     const body = new FormData();
     body.append("file", state.file);
     body.append("model", modelSelect.value);
-    request = fetch("/v1/remove-background", { method: "POST", headers: { "X-API-Key": apiKey }, body });
+    controller = new AbortController();
+    state.requestController = controller;
+    request = fetch("/v1/remove-background", { method: "POST", headers: { "X-API-Key": apiKey }, body, signal: controller.signal });
   } else {
     const imageUrl = urlInput.value.trim();
     if (!imageUrl) {
@@ -144,7 +205,9 @@ async function removeBackground(event) {
       urlInput.focus();
       return;
     }
-    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value }) });
+    controller = new AbortController();
+    state.requestController = controller;
+    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value }), signal: controller.signal });
   }
 
   setBusy(true);
@@ -157,13 +220,21 @@ async function removeBackground(event) {
     state.resultUrl = URL.createObjectURL(resultBlob);
     resultPreview.src = state.resultUrl;
     downloadButton.href = state.resultUrl;
+    resultPreviewTrigger.hidden = false;
     resultPanel.hidden = false;
     resultEmpty.hidden = true;
     setStatus("处理完成，可以下载透明 PNG。", "success");
   } catch (error) {
-    setStatus(error.message || "网络连接失败，请稍后重试。", "error");
+    if (error.name === "AbortError") {
+      setStatus("已取消本次抠图。", "idle");
+    } else {
+      setStatus(error.message || "网络连接失败，请稍后重试。", "error");
+    }
   } finally {
-    setBusy(false);
+    if (state.requestController === controller) {
+      state.requestController = null;
+      setBusy(false);
+    }
   }
 }
 
@@ -184,6 +255,33 @@ dropZone.addEventListener("keydown", (event) => {
   dropZone.classList.remove("is-dragging");
 }));
 dropZone.addEventListener("drop", (event) => setSelectedFile(event.dataTransfer.files[0]));
+originalPreviewTrigger.addEventListener("click", () => openPreview(state.originalUrl, originalPreview.alt, originalPreviewTrigger));
+resultPreviewTrigger.addEventListener("click", () => openPreview(state.resultUrl, resultPreview.alt, resultPreviewTrigger));
+dialogClose.addEventListener("click", closePreview);
+imageDialogBackdrop.addEventListener("click", closePreview);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !imageDialog.hidden) closePreview();
+  if (event.key !== "Tab" || imageDialog.hidden) return;
+
+  const focusables = getDialogFocusables();
+  if (focusables.length === 0) return;
+  const firstFocusable = focusables[0];
+  const lastFocusable = focusables.at(-1);
+  const outsideDialog = !imageDialog.contains(document.activeElement);
+  if (event.shiftKey && (outsideDialog || document.activeElement === firstFocusable)) {
+    event.preventDefault();
+    lastFocusable.focus();
+  } else if (!event.shiftKey && (outsideDialog || document.activeElement === lastFocusable)) {
+    event.preventDefault();
+    firstFocusable.focus();
+  }
+});
+dialogImage.addEventListener("error", () => {
+  if (imageDialog.hidden) return;
+  dialogImage.hidden = true;
+  dialogError.textContent = "图片预览加载失败，请关闭后重试。";
+  dialogError.hidden = false;
+});
 form.addEventListener("submit", removeBackground);
 modelSelect.addEventListener("change", () => {
   const selected = modelSelect.options[modelSelect.selectedIndex];
@@ -191,6 +289,7 @@ modelSelect.addEventListener("change", () => {
 });
 loadModels();
 window.addEventListener("beforeunload", () => {
+  closePreview();
   clearObjectUrl("originalUrl");
   clearObjectUrl("resultUrl");
 });

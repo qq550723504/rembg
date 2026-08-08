@@ -89,7 +89,9 @@
               </div>
               <div class="preview-frame checkerboard">
                 <div class="empty-preview" id="original-empty">选择图片后预览</div>
-                <img id="original-preview" alt="原始图片预览" hidden>
+                <button id="original-preview-trigger" class="preview-trigger" type="button" aria-label="查看原始图片大图" hidden>
+                  <img id="original-preview" alt="原始图片预览">
+                </button>
               </div>
             </article>
 
@@ -99,7 +101,9 @@
                 <span class="preview-badge result-badge">PNG</span>
               </div>
               <div class="preview-frame checkerboard">
-                <img id="result-preview" alt="透明背景抠图结果">
+                <button id="result-preview-trigger" class="preview-trigger" type="button" aria-label="查看抠图结果大图" hidden>
+                  <img id="result-preview" alt="透明背景抠图结果">
+                </button>
               </div>
               <a id="download-button" class="download-button" download="removed-background.png" href="#">下载透明 PNG <span aria-hidden="true">↓</span></a>
             </article>
@@ -112,6 +116,18 @@
           </div>
         </section>
       </form>
+
+      <section id="image-dialog" class="image-dialog" role="dialog" aria-modal="true" aria-labelledby="image-dialog-title" hidden>
+        <div id="image-dialog-backdrop" class="image-dialog-backdrop" aria-hidden="true"></div>
+        <div class="image-dialog-panel">
+          <div class="image-dialog-heading">
+            <h2 id="image-dialog-title">图片预览</h2>
+            <button id="dialog-close" class="dialog-close" type="button" aria-label="关闭图片预览">×</button>
+          </div>
+          <img id="dialog-image" class="dialog-image" alt="">
+          <p id="dialog-error" class="dialog-error" role="alert" hidden></p>
+        </div>
+      </section>
 
       <footer class="footer-note">本地处理工作台 · API Key 仅用于当前请求</footer>
     </main>
