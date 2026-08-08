@@ -38,19 +38,21 @@ curl http://localhost:8000/health
 
 ## Web UI
 
-启动容器后打开 `http://localhost:8000/`。在页面填写 `.env` 中的 `API_KEY`，然后可以选择本地图片或输入公网图片 URL。处理成功后页面会显示透明 PNG，并提供下载按钮。
+启动容器后打开 `http://localhost:8000/`。在页面填写 `.env` 中的 `API_KEY`，选择模型，然后可以选择本地图片或输入公网图片 URL。处理成功后页面会显示透明 PNG，并提供下载按钮。
 
 API Key 只在当前页面请求中使用，不会保存到浏览器。
 
-首次请求会下载模型到 Docker Volume `rembg-model-cache`，后续重启会复用缓存。容器只启用一个 Uvicorn worker，避免同一张 GPU 重复加载模型。
+首次使用某个模型会下载到 Docker Volume `rembg-model-cache`，后续请求会复用缓存。容器只启用一个 Uvicorn worker，避免同一张 GPU 重复加载模型。
 
 ## API 调用
 
 ### 上传文件
 
 ```powershell
+$apiKey = (Get-Content .env | Where-Object { $_ -like 'API_KEY=*' }).Substring(8)
 curl.exe -X POST http://localhost:8000/v1/remove-background `
-  -H "X-API-Key: change-me-to-a-long-random-secret" `
+  -H "X-API-Key: $apiKey" `
+  -F "model=birefnet-portrait" `
   -F "file=@.\sample.jpg" `
   -o .\result.png
 ```
@@ -58,12 +60,21 @@ curl.exe -X POST http://localhost:8000/v1/remove-background `
 ### 图片 URL
 
 ```powershell
+$apiKey = (Get-Content .env | Where-Object { $_ -like 'API_KEY=*' }).Substring(8)
 curl.exe -X POST http://localhost:8000/v1/remove-background/url `
-  -H "X-API-Key: change-me-to-a-long-random-secret" `
+  -H "X-API-Key: $apiKey" `
   -H "Content-Type: application/json" `
-  -d '{"image_url":"https://example.com/product.jpg"}' `
+  -d '{"image_url":"https://example.com/product.jpg","model":"birefnet-general-lite"}' `
   -o .\result.png
 ```
+
+### 查询可用模型
+
+```powershell
+curl.exe http://localhost:8000/v1/models
+```
+
+请求中的 `model` 字段可省略，省略时使用 `.env` 中的 `MODEL_NAME`。未知模型会返回 `400`。
 
 URL 输入只允许 HTTP/HTTPS，并拒绝回环、私有、链路本地、保留地址和带用户凭据的 URL。服务不会跟随重定向，以降低 SSRF 风险。
 
@@ -76,6 +87,7 @@ URL 输入只允许 HTTP/HTTPS，并拒绝回环、私有、链路本地、保�
 - `MAX_UPLOAD_BYTES`：默认 20 MiB。
 - `MAX_IMAGE_PIXELS`：默认 25MP。
 - `GPU_MAX_CONCURRENCY`：默认 1。显存不足时不要直接提高这个值。
+- `MODEL_SESSION_CACHE_SIZE`：默认 2，同时缓存的模型 session 数量；模型越大，显存占用越高。
 
 ## 验证
 
