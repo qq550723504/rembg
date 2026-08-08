@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     U2NET_HOME=/var/lib/rembg
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python3-pip curl \
+    && apt-get install -y --no-install-recommends python3 python3-pip curl util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -23,7 +23,7 @@ RUN useradd --create-home --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appuser /app /var/lib/rembg \
     && chmod 755 /usr/local/bin/rembg-entrypoint.sh
 
-USER appuser
+USER root
 
 ENTRYPOINT ["/usr/local/bin/rembg-entrypoint.sh"]
 

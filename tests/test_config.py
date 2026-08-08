@@ -64,7 +64,7 @@ def test_dockerfile_declares_non_root_runtime_and_cache_ownership_contract():
     assert "useradd --create-home --shell /usr/sbin/nologin appuser" in dockerfile
     assert "mkdir -p /var/lib/rembg" in dockerfile
     assert "chown -R appuser:appuser /app /var/lib/rembg" in dockerfile
-    assert "\nUSER appuser\n" in dockerfile
+    assert "\nUSER root\n" in dockerfile
 
 
 def test_container_entrypoint_remaps_legacy_root_cache_path():
@@ -76,6 +76,14 @@ def test_container_entrypoint_remaps_legacy_root_cache_path():
     assert '"${MODEL_CACHE_DIR:-}" = "/root/.u2net"' in entrypoint
     assert "MODEL_CACHE_DIR=/var/lib/rembg" in entrypoint
     assert "U2NET_HOME=/var/lib/rembg" in entrypoint
+
+
+def test_container_entrypoint_migrates_volume_ownership_before_drop_privileges():
+    entrypoint = read_repo_file("docker-entrypoint.sh")
+
+    assert "mkdir -p /var/lib/rembg" in entrypoint
+    assert "chown -R appuser:appuser /var/lib/rembg" in entrypoint
+    assert 'exec runuser -u appuser -- "$@"' in entrypoint
 
 
 def test_ci_pins_ruff_version():
