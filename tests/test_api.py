@@ -1,4 +1,6 @@
 import asyncio
+import json
+import sys
 import threading
 from io import BytesIO
 from types import SimpleNamespace
@@ -11,7 +13,7 @@ from starlette.requests import Request
 
 from app.config import Settings
 from app.main import create_app
-from app.remover import InferenceBusyError
+from app.remover import InferenceBusyError, RembgRemover
 from app.url_fetcher import validate_public_url
 
 
@@ -99,6 +101,147 @@ async def call_asgi_post(app, path: str, headers: list[tuple[bytes, bytes]], chu
     )
     start = next(message for message in sent_messages if message["type"] == "http.response.start")
     return SimpleNamespace(status_code=start["status"], receive_calls=receive_calls)
+
+
+class DisconnectableAsgiRequest:
+    def __init__(self, path: str, headers: list[tuple[bytes, bytes]], body: bytes):
+        self.scope = {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "headers": headers,
+            "client": ("testclient", 50000),
+            "server": ("testserver", 80),
+            "root_path": "",
+        }
+        self.messages = asyncio.Queue()
+        self.messages.put_nowait(
+            {"type": "http.request", "body": body, "more_body": False}
+        )
+        self.sent_messages = []
+
+    async def receive(self):
+        return await self.messages.get()
+
+    async def send(self, message):
+        self.sent_messages.append(message)
+
+    def disconnect(self):
+        self.messages.put_nowait({"type": "http.disconnect"})
+
+
+def removal_request(path: str, png_bytes: bytes) -> DisconnectableAsgiRequest:
+    if path.endswith("/url"):
+        body = json.dumps({"image_url": "https://93.184.216.34/input.png"}).encode()
+        content_type = b"application/json"
+    else:
+        boundary = b"cancel-preview-boundary"
+        body = b"".join(
+            [
+                b"--" + boundary + b"\r\n",
+                b'Content-Disposition: form-data; name="file"; filename="input.png"\r\n',
+                b"Content-Type: image/png\r\n\r\n",
+                png_bytes,
+                b"\r\n--" + boundary + b"--\r\n",
+            ]
+        )
+        content_type = b"multipart/form-data; boundary=" + boundary
+
+    return DisconnectableAsgiRequest(
+        path,
+        [
+            (b"x-api-key", b"test-key"),
+            (b"content-type", content_type),
+            (b"content-length", str(len(body)).encode()),
+        ],
+        body,
+    )
+
+
+async def wait_until(predicate, timeout: float = 1.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/v1/remove-background", "/v1/remove-background/url"],
+)
+def test_asgi_disconnect_cancels_waiting_removal_and_releases_capacity(
+    monkeypatch, png_bytes, settings, path
+):
+    settings.max_upload_bytes = 2048
+    settings.max_request_bytes = 4096
+    settings.url_allowed_hosts = "93.184.216.34"
+    settings.rate_limit_per_minute = 30
+    settings.max_pending_requests = 1
+    release_worker = threading.Event()
+
+    def new_session(model_name, providers):
+        return "session"
+
+    def remove(data, session, force_return_bytes):
+        release_worker.wait()
+        return png_bytes
+
+    async def exercise():
+        monkeypatch.setitem(
+            sys.modules,
+            "rembg",
+            SimpleNamespace(new_session=new_session, remove=remove),
+        )
+        remover = RembgRemover(settings)
+        app = create_app(
+            settings=settings,
+            remover=remover,
+            fetcher=SimpleNamespace(fetch=lambda url: png_bytes),
+        )
+        first = removal_request(path, png_bytes)
+        waiting = removal_request(path, png_bytes)
+        replacement = removal_request(path, png_bytes)
+        tasks = []
+        try:
+            first_task = asyncio.create_task(
+                app(first.scope, first.receive, first.send)
+            )
+            tasks.append(first_task)
+            await wait_until(lambda: remover._active_requests == 1)
+
+            waiting_task = asyncio.create_task(
+                app(waiting.scope, waiting.receive, waiting.send)
+            )
+            tasks.append(waiting_task)
+            await wait_until(lambda: remover._waiting_requests == 1)
+
+            waiting.disconnect()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(waiting_task, timeout=1)
+            assert remover._waiting_requests == 0
+
+            replacement_task = asyncio.create_task(
+                app(replacement.scope, replacement.receive, replacement.send)
+            )
+            tasks.append(replacement_task)
+            await wait_until(lambda: remover._waiting_requests == 1)
+
+            release_worker.set()
+            await asyncio.wait_for(first_task, timeout=1)
+            await asyncio.wait_for(replacement_task, timeout=1)
+            assert remover._waiting_requests == 0
+            assert remover._active_requests == 0
+        finally:
+            release_worker.set()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(exercise())
 
 
 def test_health_is_public(client):

@@ -33,6 +33,7 @@ const dialogClose = document.querySelector("#dialog-close");
 const dialogImage = document.querySelector("#dialog-image");
 const dialogError = document.querySelector("#dialog-error");
 let previewOpener = null;
+let dialogUrl = null;
 const fallbackModels = [
   { name: "birefnet-general", description: "通用场景", is_default: true },
 ];
@@ -70,6 +71,7 @@ function setStatus(message, kind = "idle") {
 
 function clearObjectUrl(key) {
   if (state[key]) {
+    if (dialogUrl === state[key]) closePreview();
     URL.revokeObjectURL(state[key]);
     state[key] = null;
   }
@@ -96,6 +98,7 @@ function getDialogFocusables() {
 function openPreview(url, altText, opener = document.activeElement) {
   if (!url) return;
   previewOpener = opener;
+  dialogUrl = url;
   clearDialogError();
   dialogImage.hidden = false;
   dialogImage.src = url;
@@ -108,6 +111,7 @@ function openPreview(url, altText, opener = document.activeElement) {
 function closePreview() {
   const opener = previewOpener;
   previewOpener = null;
+  dialogUrl = null;
   imageDialog.hidden = true;
   document.body.classList.remove("dialog-open");
   dialogImage.removeAttribute("src");

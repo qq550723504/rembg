@@ -63,3 +63,29 @@ def test_static_javascript_keeps_image_dialog_keyboard_modal(client):
     assert "previewOpener" in response.text
     assert 'event.key !== "Tab"' in response.text
     assert "opener.focus()" in response.text
+
+
+def test_static_javascript_closes_dialog_before_revoking_displayed_result(client):
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    javascript = response.text
+    clear_object_url = javascript[
+        javascript.index("function clearObjectUrl") : javascript.index(
+            "function setOriginalPreview"
+        )
+    ]
+    open_preview = javascript[
+        javascript.index("function openPreview") : javascript.index(
+            "function closePreview"
+        )
+    ]
+    close_preview = javascript[
+        javascript.index("function closePreview") : javascript.index(
+            "function setSource"
+        )
+    ]
+
+    assert "if (dialogUrl === state[key]) closePreview();" in clear_object_url
+    assert "dialogUrl = url;" in open_preview
+    assert "dialogUrl = null;" in close_preview
