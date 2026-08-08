@@ -106,7 +106,7 @@
 
 - [ ] **Step 3: Implement the explicit host policy and client setting**
 
-  Parse comma-separated exact hostnames, compare normalized lowercase hostnames without implicit wildcard or subdomain inheritance, retain public-IP validation, remove the route-level duplicate `validate_public_url()` call, and pass `trust_env=False` to `httpx.AsyncClient`.
+  Parse comma-separated exact hostnames, compare normalized lowercase hostnames without implicit wildcard or subdomain inheritance, retain public-IP validation in a pinned aiohttp resolver, remove route-level duplicate `validate_public_url()` calls, and pass `trust_env=False` to `aiohttp.ClientSession`.
 
 - [ ] **Step 4: Write a failing bounded-read API test**
 

@@ -47,6 +47,7 @@ def settings():
         api_key="test-key",
         model_name="birefnet-general",
         max_upload_bytes=128,
+        max_request_bytes=2048,
         max_image_pixels=1_000_000,
         url_fetch_timeout_seconds=15.0,
         gpu_max_concurrency=1,

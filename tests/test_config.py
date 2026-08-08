@@ -30,6 +30,11 @@ def test_settings_have_safe_model_cache_default():
     assert Settings(api_key="secret").model_session_cache_size == 2
 
 
+def test_settings_require_request_limit_to_exceed_upload_limit():
+    with pytest.raises(ValidationError):
+        Settings(api_key="secret", max_upload_bytes=1024, max_request_bytes=1024)
+
+
 def test_readme_documents_runtime_contracts():
     readme = read_repo_file("README.md")
 
@@ -59,6 +64,18 @@ def test_dockerfile_declares_non_root_runtime_and_cache_ownership_contract():
     assert "mkdir -p /var/lib/rembg" in dockerfile
     assert "chown -R appuser:appuser /app /var/lib/rembg" in dockerfile
     assert "\nUSER appuser\n" in dockerfile
+
+
+def test_ci_pins_ruff_version():
+    workflow = read_repo_file(".github/workflows/test.yml")
+
+    assert '"ruff==' in workflow
+
+
+def test_pyproject_declares_aiohttp_runtime_dependency():
+    pyproject = read_repo_file("pyproject.toml")
+
+    assert '"aiohttp>=' in pyproject
 
 
 def test_gitignore_ignores_generated_egg_info_artifacts():

@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,4 +21,10 @@ class Settings(BaseSettings):
     gpu_max_concurrency: int = Field(default=1, ge=1)
     model_session_cache_size: int = Field(default=2, ge=1)
     model_cache_dir: str = "/var/lib/rembg"
+
+    @model_validator(mode="after")
+    def validate_request_limit_exceeds_upload_limit(self):
+        if self.max_request_bytes <= self.max_upload_bytes:
+            raise ValueError("max_request_bytes must be greater than max_upload_bytes")
+        return self
 

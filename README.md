@@ -38,7 +38,7 @@ curl http://localhost:8000/readyz
 {"status":"ok","model":"birefnet-general"}
 ```
 
-`/readyz` 会在模型后端不可用时返回 `503`，用于区分“进程活着”与“推理已就绪”。
+`/readyz` 会在模型后端不可用或模型缓存目录不可写时返回 `503`，用于区分“进程活着”与“推理已就绪”。
 
 ## Web UI
 
@@ -80,7 +80,7 @@ curl.exe http://localhost:8000/v1/models
 
 请求中的 `model` 字段可省略，省略时使用 `.env` 中的 `MODEL_NAME`。未知模型会返回 `400`。
 
-URL 输入只允许 HTTP/HTTPS，并拒绝回环、私有、链路本地、保留地址和带用户凭据的 URL。服务不会跟随重定向，以降低 SSRF 风险。
+URL 输入只允许 HTTP/HTTPS，并拒绝回环、私有、链路本地、保留地址和带用户凭据的 URL。服务不会跟随重定向，不读取环境代理，并通过 aiohttp resolver/connector 固定已通过公网过滤的解析地址；TLS 仍按原始主机名做 SNI 和证书校验，以降低 SSRF 和 DNS rebinding 风险。
 
 要启用 URL 接口，必须把 `URL_ALLOWED_HOSTS` 配置为逗号分隔的精确主机名白名单；空值表示禁用 URL 输入，而不是“允许所有外链”。
 
@@ -91,10 +91,10 @@ URL 输入只允许 HTTP/HTTPS，并拒绝回环、私有、链路本地、保�
 - `API_KEY`：必填；文件和 URL 接口都需要通过 `X-API-Key` 传入。
 - `MODEL_NAME`：默认 `birefnet-general`。
 - `MAX_UPLOAD_BYTES`：默认 20 MiB，限制图片内容本身大小。
-- `MAX_REQUEST_BYTES`：默认 25 MiB，限制整个 multipart / HTTP 请求体大小，避免外围封装开销绕过上传限制。
+- `MAX_REQUEST_BYTES`：默认 25 MiB，限制整个 multipart / HTTP 请求体大小，在 FastAPI multipart 解析前由 ASGI middleware 执行；该值必须大于 `MAX_UPLOAD_BYTES`，以容纳 multipart 边界和字段开销。
 - `MAX_IMAGE_PIXELS`：默认 25MP。
 - `URL_ALLOWED_HOSTS`：逗号分隔的精确主机名白名单；为空时禁用 URL 下载。
-- `RATE_LIMIT_PER_MINUTE`：默认每个 `X-API-Key` 每分钟 30 次，作用范围是当前进程内的受保护去背景接口。
+- `RATE_LIMIT_PER_MINUTE`：默认每个有效 `X-API-Key` 每分钟 30 次，文件上传和 URL 两个受保护去背景接口共享同一个当前进程内限额；缺失或错误 key 始终返回 `401`，不会消耗限额。
 - `MAX_PENDING_REQUESTS`：默认 4，表示当前进程内允许等待 GPU 执行槽位的额外请求数。
 - `GPU_MAX_CONCURRENCY`：默认 1。显存不足时不要直接提高这个值。
 - `MODEL_SESSION_CACHE_SIZE`：默认 2，同时缓存的模型 session 数量；模型越大，显存占用越高。

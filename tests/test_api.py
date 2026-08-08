@@ -58,6 +58,48 @@ def make_request(path: str) -> Request:
     )
 
 
+async def call_asgi_post(app, path: str, headers: list[tuple[bytes, bytes]], chunks: list[bytes]):
+    sent_messages = []
+    receive_calls = 0
+    chunk_iter = iter(chunks)
+
+    async def receive():
+        nonlocal receive_calls
+        receive_calls += 1
+        try:
+            body = next(chunk_iter)
+        except StopIteration:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        return {
+            "type": "http.request",
+            "body": body,
+            "more_body": True,
+        }
+
+    async def send(message):
+        sent_messages.append(message)
+
+    await app(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "headers": headers,
+            "client": ("testclient", 50000),
+            "server": ("testserver", 80),
+            "root_path": "",
+        },
+        receive,
+        send,
+    )
+    start = next(message for message in sent_messages if message["type"] == "http.response.start")
+    return SimpleNamespace(status_code=start["status"], receive_calls=receive_calls)
+
+
 def test_health_is_public(client):
     response = client.get("/health")
 
@@ -140,6 +182,44 @@ def test_readyz_returns_503_when_backend_is_unavailable(png_bytes):
     }
 
 
+def test_readyz_returns_503_when_cache_directory_is_not_writable(png_bytes, tmp_path):
+    class ReadyRemover:
+        def remove(self, data: bytes, model_name: str | None = None) -> bytes:
+            return png_bytes
+
+        def readiness(self) -> dict[str, object]:
+            return {
+                "available": True,
+                "backend": "fake",
+                "providers": ["CPUExecutionProvider"],
+            }
+
+    cache_file = tmp_path / "not-a-cache-directory"
+    cache_file.write_text("not a directory", encoding="utf-8")
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=2048,
+        max_request_bytes=4096,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        rate_limit_per_minute=30,
+        max_pending_requests=4,
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir=str(cache_file),
+        model_session_cache_size=2,
+    )
+    client = TestClient(create_app(settings=settings, remover=ReadyRemover()))
+
+    response = client.get("/readyz")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "unavailable"
+    assert response.json()["reason"] == "model cache directory is not writable"
+    assert str(cache_file) not in response.text
+
+
 def test_upload_requires_api_key(client, png_bytes):
     response = client.post(
         "/v1/remove-background",
@@ -172,6 +252,36 @@ def test_upload_requires_api_key_before_rate_limiting(fake_remover, png_bytes):
     )
 
     assert response.status_code == 401
+
+
+def test_upload_keeps_invalid_api_key_unauthorized_after_retries(fake_remover, png_bytes):
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=2048,
+        max_request_bytes=2048,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        rate_limit_per_minute=1,
+        max_pending_requests=4,
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    client = TestClient(create_app(settings=settings, remover=fake_remover))
+
+    responses = [
+        client.post(
+            "/v1/remove-background",
+            headers={"X-API-Key": "wrong-key"},
+            files={"file": ("input.png", png_bytes, "image/png")},
+        )
+        for _ in range(3)
+    ]
+
+    assert [response.status_code for response in responses] == [401, 401, 401]
+    assert fake_remover.calls == []
 
 
 def test_upload_returns_transparent_png(fake_remover, png_bytes):
@@ -392,6 +502,118 @@ def test_upload_route_allows_valid_file_when_request_framing_exceeds_image_limit
     assert response.headers["content-type"] == "image/png"
 
 
+def test_asgi_request_limit_rejects_oversized_content_length_before_body_read(
+    fake_remover,
+):
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=32,
+        max_request_bytes=64,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        rate_limit_per_minute=30,
+        max_pending_requests=4,
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    app = create_app(settings=settings, remover=fake_remover)
+
+    response = asyncio.run(
+        call_asgi_post(
+            app,
+            "/v1/remove-background",
+            headers=[
+                (b"x-api-key", b"test-key"),
+                (b"content-length", b"65"),
+                (b"content-type", b"application/octet-stream"),
+            ],
+            chunks=[],
+        )
+    )
+
+    assert response.status_code == 413
+    assert response.receive_calls == 0
+    assert fake_remover.calls == []
+
+
+def test_asgi_protected_upload_rejects_invalid_api_key_before_request_limit(
+    fake_remover,
+):
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=32,
+        max_request_bytes=64,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        rate_limit_per_minute=30,
+        max_pending_requests=4,
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    app = create_app(settings=settings, remover=fake_remover)
+
+    response = asyncio.run(
+        call_asgi_post(
+            app,
+            "/v1/remove-background",
+            headers=[
+                (b"x-api-key", b"wrong-key"),
+                (b"content-length", b"65"),
+                (b"content-type", b"application/octet-stream"),
+            ],
+            chunks=[],
+        )
+    )
+
+    assert response.status_code == 401
+    assert response.receive_calls == 0
+    assert fake_remover.calls == []
+
+
+def test_asgi_request_limit_rejects_chunked_body_without_content_length(
+    fake_remover,
+):
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=32,
+        max_request_bytes=64,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        rate_limit_per_minute=30,
+        max_pending_requests=4,
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    app = create_app(settings=settings, remover=fake_remover)
+
+    response = asyncio.run(
+        call_asgi_post(
+            app,
+            "/v1/remove-background",
+            headers=[
+                (b"x-api-key", b"test-key"),
+                (b"content-type", b"multipart/form-data; boundary=test-boundary"),
+            ],
+            chunks=[
+                b"--test-boundary\r\n",
+                b'Content-Disposition: form-data; name="file"; filename="input.png"\r\n',
+            ],
+        )
+    )
+
+    assert response.status_code == 413
+    assert fake_remover.calls == []
+
+
 def test_rate_limiter_rejects_second_upload_request(fake_remover, png_bytes):
     client = make_authenticated_upload_client(
         fake_remover,
@@ -447,6 +669,45 @@ def test_rate_limiter_rejects_second_url_request(fake_remover, png_bytes):
 
     assert first.status_code == 200
     assert second.status_code == 429
+
+
+def test_rate_limiter_shares_valid_api_key_limit_across_removal_routes(
+    fake_remover, png_bytes
+):
+    settings = SimpleNamespace(
+        api_key="test-key",
+        model_name="birefnet-general",
+        max_upload_bytes=2048,
+        max_request_bytes=2048,
+        max_image_pixels=1_000_000,
+        url_allowed_hosts="93.184.216.34",
+        rate_limit_per_minute=1,
+        max_pending_requests=4,
+        url_fetch_timeout_seconds=15.0,
+        gpu_max_concurrency=1,
+        model_cache_dir="/tmp/rembg-models",
+        model_session_cache_size=2,
+    )
+    client = TestClient(
+        create_app(
+            settings=settings,
+            remover=fake_remover,
+            fetcher=SimpleNamespace(fetch=lambda url: png_bytes),
+        )
+    )
+    client.headers.update({"X-API-Key": "test-key"})
+
+    upload = client.post(
+        "/v1/remove-background",
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+    url = client.post(
+        "/v1/remove-background/url",
+        json={"image_url": "https://93.184.216.34/input.png"},
+    )
+
+    assert upload.status_code == 200
+    assert url.status_code == 429
 
 
 def test_url_endpoint_accepts_json(authenticated_client, fake_fetcher):

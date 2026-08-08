@@ -1,5 +1,7 @@
 import inspect
 import logging
+import secrets
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,7 @@ from .remover import (
     ReadinessAwareRemover,
     RembgRemover,
 )
+from .request_limits import RequestBodyLimitMiddleware
 from .url_fetcher import ImageFetcher, UrlFetchError
 
 logger = logging.getLogger(__name__)
@@ -65,8 +68,9 @@ def _api_key_rate_limit_key(request: Request) -> str:
     return request.headers.get("X-API-Key", "")
 
 
-def _skip_rate_limit_when_api_key_missing(request: Request) -> bool:
-    return not bool(request.headers.get("X-API-Key"))
+def _has_valid_api_key(settings: Settings, request: Request) -> bool:
+    supplied_key = request.headers.get("X-API-Key")
+    return bool(supplied_key) and secrets.compare_digest(supplied_key, settings.api_key)
 
 
 def _readiness_payload(
@@ -90,7 +94,23 @@ def _readiness_payload(
     }
     if "reason" in readiness:
         payload["reason"] = readiness["reason"]
+    if not _cache_directory_writable(settings.model_cache_dir):
+        payload["status"] = "unavailable"
+        payload["reason"] = "model cache directory is not writable"
+        return 503, payload
     return (200 if readiness["available"] else 503, payload)
+
+
+def _cache_directory_writable(cache_dir: str) -> bool:
+    try:
+        path = Path(cache_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        if not path.is_dir():
+            return False
+        with tempfile.TemporaryFile(dir=path):
+            return True
+    except OSError:
+        return False
 
 
 def create_app(
@@ -106,6 +126,12 @@ def create_app(
     application = FastAPI(
         title="rembg BiRefNet API",
         version="0.1.0",
+    )
+    application.add_middleware(
+        RequestBodyLimitMiddleware,
+        max_bytes=getattr(settings, "max_request_bytes", settings.max_upload_bytes),
+        api_key=settings.api_key,
+        protected_paths=("/v1/remove-background", "/v1/remove-background/url"),
     )
     limiter = Limiter(key_func=_api_key_rate_limit_key)
     rate_limit = f"{getattr(settings, 'rate_limit_per_minute', 30)}/minute"
@@ -148,8 +174,14 @@ def create_app(
             "models": model_options(settings.model_name),
         }
 
+    limit_removal_route = limiter.shared_limit(
+        rate_limit,
+        scope="remove-background",
+        exempt_when=lambda request: not _has_valid_api_key(settings, request),
+    )
+
     @application.post("/v1/remove-background")
-    @limiter.limit(rate_limit, exempt_when=_skip_rate_limit_when_api_key_missing)
+    @limit_removal_route
     async def remove_background(
         request: Request,
         file: UploadFile | None = UPLOAD_FILE,
@@ -189,7 +221,7 @@ def create_app(
             raise _image_error(exc) from exc
 
     @application.post("/v1/remove-background/url")
-    @limiter.limit(rate_limit, exempt_when=_skip_rate_limit_when_api_key_missing)
+    @limit_removal_route
     async def remove_background_from_url(
         request: Request,
         payload: ImageUrlRequest,
