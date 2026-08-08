@@ -3,6 +3,7 @@ const state = {
   file: null,
   originalUrl: null,
   resultUrl: null,
+  requestController: null,
 };
 
 const form = document.querySelector("#remove-form");
@@ -16,6 +17,7 @@ const filePanel = document.querySelector("#file-panel");
 const urlPanel = document.querySelector("#url-panel");
 const dropZone = document.querySelector("#drop-zone");
 const removeButton = document.querySelector("#remove-button");
+const buttonLabel = removeButton.querySelector(".button-label");
 const statusMessage = document.querySelector("#status-message");
 const originalPreview = document.querySelector("#original-preview");
 const originalEmpty = document.querySelector("#original-empty");
@@ -110,9 +112,11 @@ async function parseError(response) {
 }
 
 function setBusy(isBusy) {
-  removeButton.disabled = isBusy;
   modelSelect.disabled = isBusy;
   removeButton.classList.toggle("is-loading", isBusy);
+  removeButton.classList.toggle("is-cancel", isBusy);
+  buttonLabel.textContent = isBusy ? "取消抠图" : "开始抠图";
+  removeButton.setAttribute("aria-label", isBusy ? "取消抠图" : "开始抠图");
   document.querySelectorAll("#remove-form input").forEach((input) => {
     input.disabled = isBusy || (input.id === "file-input" && state.source !== "file") || (input.id === "url-input" && state.source !== "url");
   });
@@ -120,6 +124,14 @@ function setBusy(isBusy) {
 
 async function removeBackground(event) {
   event.preventDefault();
+  if (state.requestController) {
+    state.requestController.abort();
+    state.requestController = null;
+    setStatus("已取消本次抠图。", "idle");
+    setBusy(false);
+    return;
+  }
+
   const apiKey = apiKeyInput.value.trim();
   if (!apiKey) {
     setStatus("请先填写 API Key。", "error");
@@ -127,6 +139,7 @@ async function removeBackground(event) {
     return;
   }
 
+  let controller;
   let request;
   if (state.source === "file") {
     if (!state.file) {
@@ -136,7 +149,9 @@ async function removeBackground(event) {
     const body = new FormData();
     body.append("file", state.file);
     body.append("model", modelSelect.value);
-    request = fetch("/v1/remove-background", { method: "POST", headers: { "X-API-Key": apiKey }, body });
+    controller = new AbortController();
+    state.requestController = controller;
+    request = fetch("/v1/remove-background", { method: "POST", headers: { "X-API-Key": apiKey }, body, signal: controller.signal });
   } else {
     const imageUrl = urlInput.value.trim();
     if (!imageUrl) {
@@ -144,7 +159,9 @@ async function removeBackground(event) {
       urlInput.focus();
       return;
     }
-    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value }) });
+    controller = new AbortController();
+    state.requestController = controller;
+    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value }), signal: controller.signal });
   }
 
   setBusy(true);
@@ -161,9 +178,16 @@ async function removeBackground(event) {
     resultEmpty.hidden = true;
     setStatus("处理完成，可以下载透明 PNG。", "success");
   } catch (error) {
-    setStatus(error.message || "网络连接失败，请稍后重试。", "error");
+    if (error.name === "AbortError") {
+      setStatus("已取消本次抠图。", "idle");
+    } else {
+      setStatus(error.message || "网络连接失败，请稍后重试。", "error");
+    }
   } finally {
-    setBusy(false);
+    if (state.requestController === controller) {
+      state.requestController = null;
+      setBusy(false);
+    }
   }
 }
 
