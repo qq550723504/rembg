@@ -27,6 +27,8 @@ body {
     var(--bg);
 }
 
+body.dialog-open { overflow: hidden; }
+
 button, input { font: inherit; }
 button, label { -webkit-tap-highlight-color: transparent; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
@@ -86,6 +88,8 @@ select.text-input { cursor: pointer; }
 .preview-frame { display: grid; min-height: 270px; place-items: center; overflow: hidden; border-radius: 10px; }
 .checkerboard { background-color: #17263a; background-image: linear-gradient(45deg, #22354e 25%, transparent 25%), linear-gradient(-45deg, #22354e 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #22354e 75%), linear-gradient(-45deg, transparent 75%, #22354e 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; }
 .preview-frame img { display: block; width: 100%; height: 270px; object-fit: contain; }
+.preview-trigger { display: block; width: 100%; min-height: 270px; cursor: zoom-in; border: 0; padding: 0; background: transparent; }
+.preview-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .empty-preview { padding: 24px; color: #7187a1; font-size: 13px; text-align: center; }
 .empty-result { display: flex; min-height: 334px; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); text-align: center; }
 .empty-result strong { margin-bottom: 4px; color: #c8d7e8; }
@@ -93,6 +97,16 @@ select.text-input { cursor: pointer; }
 .empty-result-icon { margin-bottom: 14px; color: #6d87a3; font-size: 34px; }
 .download-button { display: block; margin: 12px 2px 1px; border: 1px solid rgba(105, 230, 193, 0.3); border-radius: 9px; padding: 9px; color: var(--accent); text-align: center; text-decoration: none; background: rgba(105, 230, 193, 0.07); transition: 160ms; }
 .download-button:hover { background: rgba(105, 230, 193, 0.15); }
+.image-dialog { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 24px; }
+.image-dialog-backdrop { position: absolute; inset: 0; background: rgba(3, 12, 24, 0.82); backdrop-filter: blur(5px); }
+.image-dialog-panel { position: relative; z-index: 1; display: flex; width: fit-content; max-width: 92vw; max-height: 90vh; flex-direction: column; overflow: auto; border: 1px solid var(--border); border-radius: 16px; padding: 16px; background: #0c1a2b; box-shadow: var(--shadow); }
+.image-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 12px; }
+.image-dialog-heading h2 { font-size: 17px; }
+.dialog-close { display: grid; width: 32px; height: 32px; cursor: pointer; place-items: center; border: 1px solid var(--border); border-radius: 8px; padding: 0; color: var(--text); font-size: 24px; line-height: 1; background: rgba(255, 255, 255, 0.05); }
+.dialog-close:hover { border-color: rgba(105, 230, 193, 0.5); color: var(--accent); }
+.dialog-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dialog-image { display: block; width: auto; height: auto; max-width: min(92vw, 100%); max-height: calc(90vh - 76px); object-fit: contain; }
+.dialog-error { margin: 0; color: var(--danger); }
 .footer-note { margin: 16px 0 0; font-size: 12px; text-align: center; }
 
 @media (max-width: 760px) {
@@ -102,4 +116,7 @@ select.text-input { cursor: pointer; }
   .controls-section, .preview-section { padding: 22px; }
   .preview-grid { grid-template-columns: 1fr; }
   .empty-result { min-height: 220px; }
+  .image-dialog { padding: 12px; }
+  .image-dialog-panel { max-width: 92vw; padding: 12px; }
+  .dialog-image { max-height: calc(90vh - 68px); }
 }

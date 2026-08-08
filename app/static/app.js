@@ -20,11 +20,18 @@ const removeButton = document.querySelector("#remove-button");
 const buttonLabel = removeButton.querySelector(".button-label");
 const statusMessage = document.querySelector("#status-message");
 const originalPreview = document.querySelector("#original-preview");
+const originalPreviewTrigger = document.querySelector("#original-preview-trigger");
 const originalEmpty = document.querySelector("#original-empty");
 const resultPanel = document.querySelector("#result-panel");
 const resultEmpty = document.querySelector("#result-empty");
 const resultPreview = document.querySelector("#result-preview");
+const resultPreviewTrigger = document.querySelector("#result-preview-trigger");
 const downloadButton = document.querySelector("#download-button");
+const imageDialog = document.querySelector("#image-dialog");
+const imageDialogBackdrop = document.querySelector("#image-dialog-backdrop");
+const dialogClose = document.querySelector("#dialog-close");
+const dialogImage = document.querySelector("#dialog-image");
+const dialogError = document.querySelector("#dialog-error");
 const fallbackModels = [
   { name: "birefnet-general", description: "通用场景", is_default: true },
 ];
@@ -68,11 +75,36 @@ function clearObjectUrl(key) {
 }
 
 function setOriginalPreview(blobOrFile) {
+  closePreview();
   clearObjectUrl("originalUrl");
   state.originalUrl = URL.createObjectURL(blobOrFile);
   originalPreview.src = state.originalUrl;
-  originalPreview.hidden = false;
+  originalPreviewTrigger.hidden = false;
   originalEmpty.hidden = true;
+}
+
+function clearDialogError() {
+  dialogError.textContent = "";
+  dialogError.hidden = true;
+}
+
+function openPreview(url, altText) {
+  if (!url) return;
+  clearDialogError();
+  dialogImage.hidden = false;
+  dialogImage.src = url;
+  dialogImage.alt = altText;
+  imageDialog.hidden = false;
+  document.body.classList.add("dialog-open");
+  dialogClose.focus();
+}
+
+function closePreview() {
+  imageDialog.hidden = true;
+  document.body.classList.remove("dialog-open");
+  dialogImage.removeAttribute("src");
+  dialogImage.alt = "";
+  clearDialogError();
 }
 
 function setSource(source) {
@@ -96,6 +128,7 @@ function setSelectedFile(file) {
   fileName.textContent = file.name;
   setOriginalPreview(file);
   resultPanel.hidden = true;
+  resultPreviewTrigger.hidden = true;
   resultEmpty.hidden = false;
   clearObjectUrl("resultUrl");
   setStatus("图片已准备好，可以开始抠图。", "success");
@@ -174,6 +207,7 @@ async function removeBackground(event) {
     state.resultUrl = URL.createObjectURL(resultBlob);
     resultPreview.src = state.resultUrl;
     downloadButton.href = state.resultUrl;
+    resultPreviewTrigger.hidden = false;
     resultPanel.hidden = false;
     resultEmpty.hidden = true;
     setStatus("处理完成，可以下载透明 PNG。", "success");
@@ -208,6 +242,19 @@ dropZone.addEventListener("keydown", (event) => {
   dropZone.classList.remove("is-dragging");
 }));
 dropZone.addEventListener("drop", (event) => setSelectedFile(event.dataTransfer.files[0]));
+originalPreviewTrigger.addEventListener("click", () => openPreview(state.originalUrl, originalPreview.alt));
+resultPreviewTrigger.addEventListener("click", () => openPreview(state.resultUrl, resultPreview.alt));
+dialogClose.addEventListener("click", closePreview);
+imageDialogBackdrop.addEventListener("click", closePreview);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !imageDialog.hidden) closePreview();
+});
+dialogImage.addEventListener("error", () => {
+  if (imageDialog.hidden) return;
+  dialogImage.hidden = true;
+  dialogError.textContent = "图片预览加载失败，请关闭后重试。";
+  dialogError.hidden = false;
+});
 form.addEventListener("submit", removeBackground);
 modelSelect.addEventListener("change", () => {
   const selected = modelSelect.options[modelSelect.selectedIndex];
@@ -215,6 +262,7 @@ modelSelect.addEventListener("change", () => {
 });
 loadModels();
 window.addEventListener("beforeunload", () => {
+  closePreview();
   clearObjectUrl("originalUrl");
   clearObjectUrl("resultUrl");
 });
