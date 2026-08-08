@@ -57,6 +57,15 @@ def test_static_javascript_serializes_advanced_removal_options(client):
     assert 'body.append("alpha_matting"' in javascript
 
 
+def test_static_javascript_rejects_empty_advanced_numeric_values(client):
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    javascript = response.text
+    assert 'input.value.trim() === ""' in javascript
+    assert "if (!removalOptions)" in javascript
+
+
 def test_existing_api_contract_remains_available(client):
     response = client.get("/health")
 

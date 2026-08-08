@@ -136,6 +136,14 @@ function setSource(source) {
 }
 
 function getRemovalOptions() {
+  const numericInputs = [
+    foregroundThresholdInput,
+    backgroundThresholdInput,
+    erodeSizeInput,
+  ];
+  if (numericInputs.some((input) => input.value.trim() === "")) {
+    return null;
+  }
   return {
     alpha_matting: alphaMattingInput.checked,
     alpha_matting_foreground_threshold: Number(foregroundThresholdInput.value),
@@ -199,6 +207,11 @@ async function removeBackground(event) {
     apiKeyInput.focus();
     return;
   }
+  const removalOptions = getRemovalOptions();
+  if (!removalOptions) {
+    setStatus("高级参数不能为空。", "error");
+    return;
+  }
 
   let controller;
   let request;
@@ -210,7 +223,6 @@ async function removeBackground(event) {
     const body = new FormData();
     body.append("file", state.file);
     body.append("model", modelSelect.value);
-    const removalOptions = getRemovalOptions();
     body.append("alpha_matting", String(removalOptions.alpha_matting));
     body.append("alpha_matting_foreground_threshold", String(removalOptions.alpha_matting_foreground_threshold));
     body.append("alpha_matting_background_threshold", String(removalOptions.alpha_matting_background_threshold));
@@ -228,7 +240,7 @@ async function removeBackground(event) {
     }
     controller = new AbortController();
     state.requestController = controller;
-    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value, ...getRemovalOptions() }), signal: controller.signal });
+    request = fetch("/v1/remove-background/url", { method: "POST", headers: { "X-API-Key": apiKey, "Content-Type": "application/json" }, body: JSON.stringify({ image_url: imageUrl, model: modelSelect.value, ...removalOptions }), signal: controller.signal });
   }
 
   setBusy(true);
