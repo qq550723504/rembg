@@ -13,10 +13,13 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY pyproject.toml ./
+
+RUN python3 -m pip install --break-system-packages --no-build-isolation ".[gpu]"
+
 COPY app ./app
 COPY docker-entrypoint.sh /usr/local/bin/rembg-entrypoint.sh
 
-RUN python3 -m pip install --break-system-packages --no-build-isolation ".[gpu]"
+RUN chmod +x /usr/local/bin/rembg-entrypoint.sh
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
     && mkdir -p /var/lib/rembg \

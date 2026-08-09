@@ -937,6 +937,15 @@ def test_models_endpoint_lists_default_and_supported_models(client):
     }
 
 
+def test_models_endpoint_includes_capabilities(client):
+    response = client.get("/v1/models")
+
+    assert response.status_code == 200
+    sam = next(item for item in response.json()["models"] if item["name"] == "sam")
+    assert sam["capabilities"]["experimental"] is True
+    assert sam["capabilities"]["category"] == "prompt"
+
+
 def test_upload_passes_requested_model_to_remover(
     fake_remover, png_bytes
 ):
@@ -988,6 +997,24 @@ def test_upload_passes_removal_options_to_remover(
     }
 
 
+def test_upload_ignores_alpha_thresholds_when_alpha_matting_is_disabled(
+    authenticated_client, fake_remover, png_bytes
+):
+    response = authenticated_client.post(
+        "/v1/remove-background",
+        data={
+            "alpha_matting": "false",
+            "alpha_matting_foreground_threshold": "220",
+            "alpha_matting_background_threshold": "20",
+            "alpha_matting_erode_size": "8",
+        },
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert fake_remover.calls[-1][2] == {}
+
+
 def test_url_passes_removal_options_to_remover(
     authenticated_client, fake_remover
 ):
@@ -995,12 +1022,14 @@ def test_url_passes_removal_options_to_remover(
         "/v1/remove-background/url",
         json={
             "image_url": "https://93.184.216.34/input.png",
+            "alpha_matting": True,
             "alpha_matting_background_threshold": 20,
         },
     )
 
     assert response.status_code == 200
     assert fake_remover.calls[-1][2] == {
+        "alpha_matting": True,
         "alpha_matting_background_threshold": 20,
     }
 

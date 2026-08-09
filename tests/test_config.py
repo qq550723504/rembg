@@ -13,7 +13,7 @@ def read_repo_file(relative_path: str) -> str:
 
 
 def test_settings_have_safe_defaults():
-    settings = Settings(api_key="secret")
+    settings = Settings(_env_file=None, api_key="secret")
 
     assert settings.model_name == "birefnet-general"
     assert settings.max_upload_bytes == 20 * 1024 * 1024
@@ -27,7 +27,7 @@ def test_settings_have_safe_defaults():
 
 
 def test_settings_have_safe_model_cache_default():
-    assert Settings(api_key="secret").model_session_cache_size == 2
+    assert Settings(_env_file=None, api_key="secret").model_session_cache_size == 2
 
 
 def test_settings_require_request_limit_to_exceed_upload_limit():

@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+if [ ! -f /usr/local/bin/rembg-entrypoint.sh ]; then
+    echo "entrypoint script missing" >&2
+    exit 1
+fi
+
 if [ "${MODEL_CACHE_DIR:-}" = "/root/.u2net" ]; then
     export MODEL_CACHE_DIR=/var/lib/rembg
 fi
