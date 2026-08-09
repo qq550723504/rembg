@@ -4,6 +4,9 @@ const state = {
   originalUrl: null,
   resultUrl: null,
   requestController: null,
+  busy: false,
+  modelCapabilities: null,
+  modelOptions: [],
 };
 
 const form = document.querySelector("#remove-form");
@@ -40,10 +43,51 @@ const dialogError = document.querySelector("#dialog-error");
 let previewOpener = null;
 let dialogUrl = null;
 const fallbackModels = [
-  { name: "birefnet-general", description: "通用场景", is_default: true },
+  {
+    name: "birefnet-general",
+    description: "通用场景",
+    is_default: true,
+    capabilities: {
+      category: "general",
+      supports_alpha_matting: true,
+      supports_post_process_mask: true,
+      experimental: false,
+    },
+  },
 ];
 
+const defaultModelCapabilities = {
+  category: "general",
+  supports_alpha_matting: true,
+  supports_post_process_mask: true,
+  experimental: false,
+};
+
+function getModelCapabilities(model) {
+  return { ...defaultModelCapabilities, ...(model?.capabilities || {}) };
+}
+
+function updateAdvancedControls() {
+  const capabilities = state.modelCapabilities || defaultModelCapabilities;
+  const supportsAlphaMatting = capabilities.supports_alpha_matting !== false;
+  const supportsPostProcess = capabilities.supports_post_process_mask !== false;
+
+  if (!supportsAlphaMatting) alphaMattingInput.checked = false;
+  alphaMattingInput.disabled = state.busy || !supportsAlphaMatting;
+  const alphaMattingEnabled = supportsAlphaMatting && alphaMattingInput.checked;
+  [
+    foregroundThresholdInput,
+    backgroundThresholdInput,
+    erodeSizeInput,
+  ].forEach((input) => {
+    input.disabled = state.busy || !alphaMattingEnabled;
+  });
+  if (!supportsPostProcess) postProcessMaskInput.checked = false;
+  postProcessMaskInput.disabled = state.busy || !supportsPostProcess;
+}
+
 function renderModels(payload) {
+  state.modelOptions = payload.models;
   modelSelect.replaceChildren();
   payload.models.forEach((model) => {
     const option = document.createElement("option");
@@ -54,8 +98,10 @@ function renderModels(payload) {
   modelSelect.value = payload.default_model;
   const selected = payload.models.find((model) => model.name === modelSelect.value) || payload.models[0];
   if (selected) {
-    modelHint.textContent = selected.description;
+    state.modelCapabilities = getModelCapabilities(selected);
+    modelHint.textContent = `${selected.description}${state.modelCapabilities.experimental ? " · 实验性" : ""}`;
   }
+  updateAdvancedControls();
 }
 
 async function loadModels() {
@@ -141,16 +187,20 @@ function getRemovalOptions() {
     backgroundThresholdInput,
     erodeSizeInput,
   ];
-  if (numericInputs.some((input) => input.value.trim() === "")) {
+  const alphaMatting = alphaMattingInput.checked;
+  if (alphaMatting && numericInputs.some((input) => input.value.trim() === "")) {
     return null;
   }
-  return {
-    alpha_matting: alphaMattingInput.checked,
-    alpha_matting_foreground_threshold: Number(foregroundThresholdInput.value),
-    alpha_matting_background_threshold: Number(backgroundThresholdInput.value),
-    alpha_matting_erode_size: Number(erodeSizeInput.value),
+  const options = {
+    alpha_matting: alphaMatting,
     post_process_mask: postProcessMaskInput.checked,
   };
+  if (options.alpha_matting) {
+    options.alpha_matting_foreground_threshold = Number(foregroundThresholdInput.value);
+    options.alpha_matting_background_threshold = Number(backgroundThresholdInput.value);
+    options.alpha_matting_erode_size = Number(erodeSizeInput.value);
+  }
+  return options;
 }
 
 function setSelectedFile(file) {
@@ -181,6 +231,7 @@ async function parseError(response) {
 }
 
 function setBusy(isBusy) {
+  state.busy = isBusy;
   modelSelect.disabled = isBusy;
   removeButton.classList.toggle("is-loading", isBusy);
   removeButton.classList.toggle("is-cancel", isBusy);
@@ -189,6 +240,7 @@ function setBusy(isBusy) {
   document.querySelectorAll("#remove-form input").forEach((input) => {
     input.disabled = isBusy || (input.id === "file-input" && state.source !== "file") || (input.id === "url-input" && state.source !== "url");
   });
+  updateAdvancedControls();
 }
 
 async function removeBackground(event) {
@@ -224,9 +276,11 @@ async function removeBackground(event) {
     body.append("file", state.file);
     body.append("model", modelSelect.value);
     body.append("alpha_matting", String(removalOptions.alpha_matting));
-    body.append("alpha_matting_foreground_threshold", String(removalOptions.alpha_matting_foreground_threshold));
-    body.append("alpha_matting_background_threshold", String(removalOptions.alpha_matting_background_threshold));
-    body.append("alpha_matting_erode_size", String(removalOptions.alpha_matting_erode_size));
+    if (removalOptions.alpha_matting) {
+      body.append("alpha_matting_foreground_threshold", String(removalOptions.alpha_matting_foreground_threshold));
+      body.append("alpha_matting_background_threshold", String(removalOptions.alpha_matting_background_threshold));
+      body.append("alpha_matting_erode_size", String(removalOptions.alpha_matting_erode_size));
+    }
     body.append("post_process_mask", String(removalOptions.post_process_mask));
     controller = new AbortController();
     state.requestController = controller;
@@ -316,9 +370,15 @@ dialogImage.addEventListener("error", () => {
   dialogError.hidden = false;
 });
 form.addEventListener("submit", removeBackground);
+alphaMattingInput.addEventListener("change", updateAdvancedControls);
 modelSelect.addEventListener("change", () => {
   const selected = modelSelect.options[modelSelect.selectedIndex];
-  modelHint.textContent = selected ? selected.textContent.split(" · ").slice(1).join(" · ") : "";
+  const model = (state.modelCapabilities = getModelCapabilities(
+    state.modelOptions.find((item) => item.name === modelSelect.value),
+  ));
+  const description = selected ? selected.textContent.split(" · ").slice(1).join(" · ") : "";
+  modelHint.textContent = `${description}${model.experimental ? " · 实验性" : ""}`;
+  updateAdvancedControls();
 });
 loadModels();
 window.addEventListener("beforeunload", () => {

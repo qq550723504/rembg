@@ -265,6 +265,10 @@ def create_app(
             alpha_matting_erode_size=alpha_matting_erode_size,
             post_process_mask=post_process_mask,
         )
+        try:
+            removal_options.validate_for_model(model_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         try:
             if content_length and content_length.isdigit():
@@ -315,6 +319,7 @@ def create_app(
 
         try:
             removal_options = payload.removal_options()
+            removal_options.validate_for_model(model_name)
 
             async def process_url() -> bytes:
                 data = await _maybe_await(fetcher.fetch(payload.image_url))

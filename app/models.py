@@ -38,11 +38,53 @@ MODEL_DESCRIPTIONS = {
     "bria-rmbg": "BRIA 背景移除",
 }
 
+MODEL_CATEGORIES = {
+    "birefnet-general": "general",
+    "birefnet-general-lite": "general",
+    "birefnet-portrait": "portrait",
+    "birefnet-dis": "salient",
+    "birefnet-hrsod": "salient",
+    "birefnet-cod": "salient",
+    "birefnet-massive": "general",
+    "u2net": "general",
+    "u2netp": "general",
+    "u2net_human_seg": "portrait",
+    "u2net_cloth_seg": "clothing",
+    "isnet-general-use": "general",
+    "isnet-anime": "anime",
+    "silueta": "general",
+    "sam": "prompt",
+    "bria-rmbg": "general",
+}
+
+
+class ModelCapabilities(TypedDict):
+    category: str
+    supports_alpha_matting: bool
+    supports_post_process_mask: bool
+    experimental: bool
+
+
+MODEL_CAPABILITIES: dict[str, ModelCapabilities] = {
+    name: {
+        "category": MODEL_CATEGORIES[name],
+        "supports_alpha_matting": True,
+        "supports_post_process_mask": True,
+        "experimental": name == "sam",
+    }
+    for name in SUPPORTED_MODELS
+}
+
 
 class ModelOption(TypedDict):
     name: str
     description: str
     is_default: bool
+    capabilities: ModelCapabilities
+
+
+def model_capabilities(name: str) -> ModelCapabilities:
+    return MODEL_CAPABILITIES[name]
 
 
 def resolve_model_name(requested: str | None, default: str) -> str:
@@ -58,6 +100,7 @@ def model_options(default: str) -> list[ModelOption]:
             "name": name,
             "description": MODEL_DESCRIPTIONS[name],
             "is_default": name == default,
+            "capabilities": model_capabilities(name),
         }
         for name in SUPPORTED_MODELS
     ]

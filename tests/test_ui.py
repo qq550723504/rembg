@@ -38,6 +38,8 @@ def test_static_assets_are_served(client):
     assert "/v1/remove-background/url" in javascript.text
     assert "/v1/models" in javascript.text
     assert '"model"' in javascript.text
+    assert "capabilities" in javascript.text
+    assert "experimental" in javascript.text
 
 
 def test_static_javascript_serializes_advanced_removal_options(client):
