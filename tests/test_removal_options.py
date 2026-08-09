@@ -13,6 +13,10 @@ def test_removal_options_use_rembg_defaults_and_omit_default_kwargs():
         "alpha_matting_background_threshold": 10,
         "alpha_matting_erode_size": 10,
         "post_process_mask": False,
+        "cloth_category": None,
+        "sam_prompt": None,
+        "sam_model": None,
+        "sam_quant": False,
     }
     assert options.to_kwargs() == {}
 
@@ -28,6 +32,22 @@ def test_removal_options_convert_non_defaults_to_allowlisted_kwargs():
         "alpha_matting": True,
         "alpha_matting_foreground_threshold": 220,
         "post_process_mask": True,
+    }
+
+
+def test_removal_options_serialize_model_specific_kwargs():
+    options = RemovalOptions(
+        cloth_category="upper",
+        sam_prompt=[{"type": "point", "label": 1, "data": [100, 120]}],
+        sam_model="sam_vit_b_01ec64",
+        sam_quant=True,
+    )
+
+    assert options.to_kwargs() == {
+        "cloth_category": "upper",
+        "sam_prompt": [{"type": "point", "label": 1, "data": [100, 120]}],
+        "sam_model": "sam_vit_b_01ec64",
+        "sam_quant": True,
     }
 
 

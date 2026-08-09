@@ -7,6 +7,7 @@ const state = {
   busy: false,
   modelCapabilities: null,
   modelOptions: [],
+  modelSpecificValues: {},
 };
 
 const form = document.querySelector("#remove-form");
@@ -18,6 +19,7 @@ const foregroundThresholdInput = document.querySelector("#alpha-matting-foregrou
 const backgroundThresholdInput = document.querySelector("#alpha-matting-background-threshold");
 const erodeSizeInput = document.querySelector("#alpha-matting-erode-size");
 const postProcessMaskInput = document.querySelector("#post-process-mask");
+const modelSpecificSettings = document.querySelector("#model-specific-settings");
 const fileInput = document.querySelector("#file-input");
 const fileName = document.querySelector("#file-name");
 const urlInput = document.querySelector("#url-input");
@@ -52,6 +54,7 @@ const fallbackModels = [
       supports_alpha_matting: true,
       supports_post_process_mask: true,
       experimental: false,
+      parameters: [],
     },
   },
 ];
@@ -61,10 +64,110 @@ const defaultModelCapabilities = {
   supports_alpha_matting: true,
   supports_post_process_mask: true,
   experimental: false,
+  parameters: [],
 };
 
 function getModelCapabilities(model) {
-  return { ...defaultModelCapabilities, ...(model?.capabilities || {}) };
+  return {
+    ...defaultModelCapabilities,
+    ...(model?.capabilities || {}),
+    parameters: model?.capabilities?.parameters || [],
+  };
+}
+
+function parameterInputId(name) {
+  return `model-parameter-${name}`;
+}
+
+function renderModelParameters(parameters) {
+  modelSpecificSettings.replaceChildren();
+  state.modelSpecificValues = {};
+  if (!parameters.length) {
+    modelSpecificSettings.hidden = true;
+    return;
+  }
+
+  parameters.forEach((parameter) => {
+    const inputId = parameterInputId(parameter.name);
+    if (parameter.type === "checkbox") {
+      const label = document.createElement("label");
+      label.className = "advanced-checkbox";
+      const input = document.createElement("input");
+      input.id = inputId;
+      input.type = "checkbox";
+      input.checked = parameter.default === true;
+      const text = document.createElement("span");
+      text.textContent = parameter.label;
+      label.append(input, text);
+      modelSpecificSettings.append(label);
+      return;
+    }
+
+    const label = document.createElement("label");
+    label.className = "advanced-field";
+    label.htmlFor = inputId;
+    const labelText = document.createElement("span");
+    labelText.textContent = parameter.label;
+    label.append(labelText);
+
+    const input = document.createElement(parameter.type === "json" ? "textarea" : "select");
+    input.id = inputId;
+    input.className = "text-input";
+    if (parameter.type === "json") {
+      input.placeholder = parameter.placeholder || "";
+      input.value = parameter.default || "";
+    } else {
+      parameter.options.forEach((option) => {
+        const optionElement = document.createElement("option");
+        optionElement.value = option.value;
+        optionElement.textContent = option.label;
+        input.append(optionElement);
+      });
+      input.value = parameter.default;
+    }
+    label.append(input);
+    if (parameter.description) {
+      const description = document.createElement("small");
+      description.className = "field-hint";
+      description.textContent = parameter.description;
+      label.append(description);
+    }
+    modelSpecificSettings.append(label);
+  });
+  modelSpecificSettings.hidden = false;
+}
+
+function getModelSpecificOptions() {
+  const options = {};
+  const parameters = state.modelCapabilities?.parameters || [];
+  for (const parameter of parameters) {
+    const input = document.querySelector(`#${parameterInputId(parameter.name)}`);
+    if (!input) continue;
+    if (parameter.type === "checkbox") {
+      if (input.checked) options[parameter.name] = true;
+    } else if (parameter.type === "json") {
+      if (input.value.trim()) {
+        try {
+          options[parameter.name] = JSON.parse(input.value);
+        } catch (_) {
+          return null;
+        }
+      }
+    } else if (input.value !== "all") {
+      options[parameter.name] = input.value;
+    } else if (parameter.name !== "cloth_category") {
+      options[parameter.name] = input.value;
+    }
+  }
+  return options;
+}
+
+function appendModelSpecificFormData(body, options) {
+  for (const parameter of state.modelCapabilities?.parameters || []) {
+    const value = options[parameter.name];
+    if (value === undefined) continue;
+    body.append(parameter.name, typeof value === "object" ? JSON.stringify(value) : String(value));
+  }
 }
 
 function updateAdvancedControls() {
@@ -100,6 +203,7 @@ function renderModels(payload) {
   if (selected) {
     state.modelCapabilities = getModelCapabilities(selected);
     modelHint.textContent = `${selected.description}${state.modelCapabilities.experimental ? " · 实验性" : ""}`;
+    renderModelParameters(state.modelCapabilities.parameters);
   }
   updateAdvancedControls();
 }
@@ -200,7 +304,9 @@ function getRemovalOptions() {
     options.alpha_matting_background_threshold = Number(backgroundThresholdInput.value);
     options.alpha_matting_erode_size = Number(erodeSizeInput.value);
   }
-  return options;
+  const modelSpecificOptions = getModelSpecificOptions();
+  if (modelSpecificOptions === null) return null;
+  return { ...options, ...modelSpecificOptions };
 }
 
 function setSelectedFile(file) {
@@ -237,7 +343,7 @@ function setBusy(isBusy) {
   removeButton.classList.toggle("is-cancel", isBusy);
   buttonLabel.textContent = isBusy ? "取消抠图" : "开始抠图";
   removeButton.setAttribute("aria-label", isBusy ? "取消抠图" : "开始抠图");
-  document.querySelectorAll("#remove-form input").forEach((input) => {
+  document.querySelectorAll("#remove-form input, #remove-form select, #remove-form textarea").forEach((input) => {
     input.disabled = isBusy || (input.id === "file-input" && state.source !== "file") || (input.id === "url-input" && state.source !== "url");
   });
   updateAdvancedControls();
@@ -282,6 +388,7 @@ async function removeBackground(event) {
       body.append("alpha_matting_erode_size", String(removalOptions.alpha_matting_erode_size));
     }
     body.append("post_process_mask", String(removalOptions.post_process_mask));
+    appendModelSpecificFormData(body, removalOptions);
     controller = new AbortController();
     state.requestController = controller;
     request = fetch("/v1/remove-background", { method: "POST", headers: { "X-API-Key": apiKey }, body, signal: controller.signal });
@@ -378,6 +485,7 @@ modelSelect.addEventListener("change", () => {
   ));
   const description = selected ? selected.textContent.split(" · ").slice(1).join(" · ") : "";
   modelHint.textContent = `${description}${model.experimental ? " · 实验性" : ""}`;
+  renderModelParameters(model.parameters);
   updateAdvancedControls();
 });
 loadModels();

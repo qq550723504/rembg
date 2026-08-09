@@ -1015,6 +1015,87 @@ def test_upload_ignores_alpha_thresholds_when_alpha_matting_is_disabled(
     assert fake_remover.calls[-1][2] == {}
 
 
+def test_upload_passes_cloth_category_only_to_cloth_model(
+    authenticated_client, fake_remover, png_bytes
+):
+    response = authenticated_client.post(
+        "/v1/remove-background",
+        data={"model": "u2net_cloth_seg", "cloth_category": "upper"},
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert fake_remover.calls[-1][1] == "u2net_cloth_seg"
+    assert fake_remover.calls[-1][2] == {"cloth_category": "upper"}
+
+
+def test_upload_passes_sam_parameters_to_sam_model(
+    authenticated_client, fake_remover, png_bytes
+):
+    prompt = [{"type": "point", "label": 1, "data": [100, 120]}]
+    response = authenticated_client.post(
+        "/v1/remove-background",
+        data={
+            "model": "sam",
+            "sam_prompt": json.dumps(prompt),
+            "sam_model": "sam_vit_b_01ec64",
+            "sam_quant": "true",
+        },
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert fake_remover.calls[-1][1] == "sam"
+    assert fake_remover.calls[-1][2] == {
+        "sam_prompt": prompt,
+        "sam_model": "sam_vit_b_01ec64",
+        "sam_quant": True,
+    }
+
+
+def test_model_specific_parameter_is_rejected_for_other_models(
+    authenticated_client, fake_remover, png_bytes
+):
+    response = authenticated_client.post(
+        "/v1/remove-background",
+        data={"model": "birefnet-general", "cloth_category": "upper"},
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 422
+    assert fake_remover.calls == []
+
+
+def test_url_model_specific_parameter_is_rejected_with_422(
+    authenticated_client, fake_fetcher, fake_remover
+):
+    response = authenticated_client.post(
+        "/v1/remove-background/url",
+        json={
+            "image_url": "https://93.184.216.34/input.png",
+            "model": "birefnet-general",
+            "cloth_category": "upper",
+        },
+    )
+
+    assert response.status_code == 422
+    assert fake_fetcher.urls == []
+    assert fake_remover.calls == []
+
+
+def test_upload_invalid_sam_prompt_is_rejected_with_422(
+    authenticated_client, fake_remover, png_bytes
+):
+    response = authenticated_client.post(
+        "/v1/remove-background",
+        data={"model": "sam", "sam_prompt": json.dumps([1])},
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 422
+    assert fake_remover.calls == []
+
+
 def test_url_passes_removal_options_to_remover(
     authenticated_client, fake_remover
 ):

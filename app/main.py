@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import json
 import logging
 import secrets
 import tempfile
@@ -48,6 +49,10 @@ class ImageUrlRequest(BaseModel):
     alpha_matting_background_threshold: int = Field(default=10, ge=0, le=255)
     alpha_matting_erode_size: int = Field(default=10, ge=0, le=255)
     post_process_mask: bool = False
+    cloth_category: str | None = None
+    sam_prompt: list[dict[str, Any]] | None = None
+    sam_model: str | None = None
+    sam_quant: bool = False
 
     def removal_options(self) -> RemovalOptions:
         return RemovalOptions(
@@ -56,7 +61,23 @@ class ImageUrlRequest(BaseModel):
             alpha_matting_background_threshold=self.alpha_matting_background_threshold,
             alpha_matting_erode_size=self.alpha_matting_erode_size,
             post_process_mask=self.post_process_mask,
+            cloth_category=self.cloth_category,
+            sam_prompt=self.sam_prompt,
+            sam_model=self.sam_model,
+            sam_quant=self.sam_quant,
         )
+
+
+def _parse_sam_prompt(value: str | None) -> list[dict[str, Any]] | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        prompt = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="sam_prompt must be valid JSON") from exc
+    if not isinstance(prompt, list):
+        raise HTTPException(status_code=422, detail="sam_prompt must be a JSON array")
+    return prompt
 
 
 async def _maybe_await(value: Any) -> Any:
@@ -248,6 +269,10 @@ def create_app(
         alpha_matting_background_threshold: Annotated[int, Form(ge=0, le=255)] = 10,
         alpha_matting_erode_size: Annotated[int, Form(ge=0, le=255)] = 10,
         post_process_mask: Annotated[bool, Form()] = False,
+        cloth_category: Annotated[str | None, Form()] = None,
+        sam_prompt: Annotated[str | None, Form()] = None,
+        sam_model: Annotated[str | None, Form()] = None,
+        sam_quant: Annotated[bool, Form()] = False,
         api_key: str | None = API_KEY_HEADER,
         content_length: str | None = CONTENT_LENGTH_HEADER,
     ) -> Response:
@@ -258,16 +283,20 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if file is None:
             raise HTTPException(status_code=400, detail="file is required")
-        removal_options = RemovalOptions(
-            alpha_matting=alpha_matting,
-            alpha_matting_foreground_threshold=alpha_matting_foreground_threshold,
-            alpha_matting_background_threshold=alpha_matting_background_threshold,
-            alpha_matting_erode_size=alpha_matting_erode_size,
-            post_process_mask=post_process_mask,
-        )
         try:
+            removal_options = RemovalOptions(
+                alpha_matting=alpha_matting,
+                alpha_matting_foreground_threshold=alpha_matting_foreground_threshold,
+                alpha_matting_background_threshold=alpha_matting_background_threshold,
+                alpha_matting_erode_size=alpha_matting_erode_size,
+                post_process_mask=post_process_mask,
+                cloth_category=cloth_category,
+                sam_prompt=_parse_sam_prompt(sam_prompt),
+                sam_model=sam_model,
+                sam_quant=sam_quant,
+            )
             removal_options.validate_for_model(model_name)
-        except ValueError as exc:
+        except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         try:
@@ -320,7 +349,10 @@ def create_app(
         try:
             removal_options = payload.removal_options()
             removal_options.validate_for_model(model_name)
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+        try:
             async def process_url() -> bytes:
                 data = await _maybe_await(fetcher.fetch(payload.image_url))
                 validate_image_bytes(data, settings)

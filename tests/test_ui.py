@@ -40,6 +40,10 @@ def test_static_assets_are_served(client):
     assert '"model"' in javascript.text
     assert "capabilities" in javascript.text
     assert "experimental" in javascript.text
+    assert "parameters" in javascript.text
+    assert "renderModelParameters" in javascript.text
+    assert "getModelSpecificOptions" in javascript.text
+    assert "appendModelSpecificFormData" in javascript.text
 
 
 def test_static_javascript_serializes_advanced_removal_options(client):
