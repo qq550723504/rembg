@@ -19,7 +19,8 @@ RUN python3 -m pip install --break-system-packages --no-build-isolation ".[gpu]"
 COPY app ./app
 COPY docker-entrypoint.sh /usr/local/bin/rembg-entrypoint.sh
 
-RUN chmod +x /usr/local/bin/rembg-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/rembg-entrypoint.sh \
+    && chmod +x /usr/local/bin/rembg-entrypoint.sh
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser \
     && mkdir -p /var/lib/rembg \
