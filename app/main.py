@@ -283,20 +283,20 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if file is None:
             raise HTTPException(status_code=400, detail="file is required")
-        removal_options = RemovalOptions(
-            alpha_matting=alpha_matting,
-            alpha_matting_foreground_threshold=alpha_matting_foreground_threshold,
-            alpha_matting_background_threshold=alpha_matting_background_threshold,
-            alpha_matting_erode_size=alpha_matting_erode_size,
-            post_process_mask=post_process_mask,
-            cloth_category=cloth_category,
-            sam_prompt=_parse_sam_prompt(sam_prompt),
-            sam_model=sam_model,
-            sam_quant=sam_quant,
-        )
         try:
+            removal_options = RemovalOptions(
+                alpha_matting=alpha_matting,
+                alpha_matting_foreground_threshold=alpha_matting_foreground_threshold,
+                alpha_matting_background_threshold=alpha_matting_background_threshold,
+                alpha_matting_erode_size=alpha_matting_erode_size,
+                post_process_mask=post_process_mask,
+                cloth_category=cloth_category,
+                sam_prompt=_parse_sam_prompt(sam_prompt),
+                sam_model=sam_model,
+                sam_quant=sam_quant,
+            )
             removal_options.validate_for_model(model_name)
-        except ValueError as exc:
+        except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         try:
@@ -349,7 +349,10 @@ def create_app(
         try:
             removal_options = payload.removal_options()
             removal_options.validate_for_model(model_name)
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+        try:
             async def process_url() -> bytes:
                 data = await _maybe_await(fetcher.fetch(payload.image_url))
                 validate_image_bytes(data, settings)

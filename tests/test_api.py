@@ -1066,6 +1066,36 @@ def test_model_specific_parameter_is_rejected_for_other_models(
     assert fake_remover.calls == []
 
 
+def test_url_model_specific_parameter_is_rejected_with_422(
+    authenticated_client, fake_fetcher, fake_remover
+):
+    response = authenticated_client.post(
+        "/v1/remove-background/url",
+        json={
+            "image_url": "https://93.184.216.34/input.png",
+            "model": "birefnet-general",
+            "cloth_category": "upper",
+        },
+    )
+
+    assert response.status_code == 422
+    assert fake_fetcher.urls == []
+    assert fake_remover.calls == []
+
+
+def test_upload_invalid_sam_prompt_is_rejected_with_422(
+    authenticated_client, fake_remover, png_bytes
+):
+    response = authenticated_client.post(
+        "/v1/remove-background",
+        data={"model": "sam", "sam_prompt": json.dumps([1])},
+        files={"file": ("input.png", png_bytes, "image/png")},
+    )
+
+    assert response.status_code == 422
+    assert fake_remover.calls == []
+
+
 def test_url_passes_removal_options_to_remover(
     authenticated_client, fake_remover
 ):

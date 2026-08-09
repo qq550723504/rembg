@@ -3,7 +3,7 @@ import importlib
 import os
 import threading
 from collections import OrderedDict
-from typing import ClassVar, NotRequired, Protocol, TypedDict, runtime_checkable
+from typing import Any, ClassVar, NotRequired, Protocol, TypedDict, runtime_checkable
 
 
 class BackgroundRemover(Protocol):
@@ -11,7 +11,7 @@ class BackgroundRemover(Protocol):
         self,
         data: bytes,
         model_name: str | None = None,
-        **options: bool | int,
+        **options: Any,
     ) -> bytes:
         ...
 
@@ -53,7 +53,7 @@ class RembgRemover:
         self,
         data: bytes,
         model_name: str | None = None,
-        **options: bool | int,
+        **options: Any,
     ) -> bytes:
         selected_model = model_name or self.settings.model_name
         await self._acquire_inference_slot()
@@ -78,7 +78,7 @@ class RembgRemover:
         self,
         data: bytes,
         model_name: str | None = None,
-        **options: bool | int,
+        **options: Any,
     ) -> bytes:
         selected_model = model_name or self.settings.model_name
         return self._remove_with_session(data, selected_model, **options)
@@ -140,32 +140,48 @@ class RembgRemover:
             self._active_requests -= 1
             self._inference_condition.notify(1)
 
-    def _get_session(self, model_name: str):
+    def _get_session(
+        self,
+        model_name: str,
+        sam_model: str | None = None,
+        sam_quant: bool = False,
+    ):
+        cache_key = (model_name, sam_model, sam_quant)
         with self._session_lock:
-            cached = self._sessions.pop(model_name, None)
+            cached = self._sessions.pop(cache_key, None)
             if cached is not None:
-                self._sessions[model_name] = cached
+                self._sessions[cache_key] = cached
                 return cached
 
             os.environ["U2NET_HOME"] = self.settings.model_cache_dir
             from rembg import new_session, remove
 
+            session_options: dict[str, Any] = {}
+            if sam_model is not None:
+                session_options["sam_model"] = sam_model
+            if sam_quant:
+                session_options["sam_quant"] = True
             session = new_session(
                 model_name,
                 providers=self._execution_providers,
+                **session_options,
             )
-            self._sessions[model_name] = (session, remove)
+            self._sessions[cache_key] = (session, remove)
             while len(self._sessions) > self.settings.model_session_cache_size:
                 self._sessions.popitem(last=False)
-            return self._sessions[model_name]
+            return self._sessions[cache_key]
 
     def _remove_with_session(
         self,
         data: bytes,
         model_name: str,
-        **options: bool | int,
+        **options: Any,
     ) -> bytes:
-        session, remove_function = self._get_session(model_name)
+        session, remove_function = self._get_session(
+            model_name,
+            sam_model=options.get("sam_model"),
+            sam_quant=bool(options.get("sam_quant", False)),
+        )
         remove_kwargs = {
             "session": session,
             "force_return_bytes": True,
