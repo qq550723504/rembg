@@ -63,8 +63,10 @@ select.text-input { cursor: pointer; }
 .advanced-checkbox { display: flex; cursor: pointer; align-items: center; gap: 9px; color: #c6d5e6; font-size: 13px; }
 .advanced-checkbox input { width: 16px; height: 16px; accent-color: var(--accent-deep); }
 .advanced-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.advanced-field { display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
-.advanced-field .text-input { padding: 9px 10px; font-size: 13px; }
+  .advanced-field { display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
+  .advanced-field .text-input { padding: 9px 10px; font-size: 13px; }
+  .model-specific-settings { display: grid; gap: 10px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .model-specific-settings textarea { min-height: 74px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
 .source-switch { display: flex; gap: 8px; margin: 21px 0 18px; padding: 0; border: 0; }
 .source-option { flex: 1; cursor: pointer; }
 .source-option input { position: absolute; opacity: 0; }

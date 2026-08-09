@@ -31,6 +31,7 @@ def test_model_options_expose_capabilities_for_every_model():
             "supports_alpha_matting",
             "supports_post_process_mask",
             "experimental",
+            "parameters",
         }
         for option in options
     )
@@ -43,3 +44,26 @@ def test_model_options_expose_capabilities_for_every_model():
     )
     assert lite["capabilities"]["supports_alpha_matting"] is True
     assert lite["capabilities"]["supports_post_process_mask"] is True
+
+
+def test_model_options_expose_model_specific_parameters():
+    options = {option["name"]: option for option in model_options("sam")}
+
+    cloth_parameters = options["u2net_cloth_seg"]["capabilities"]["parameters"]
+    assert [parameter["name"] for parameter in cloth_parameters] == [
+        "cloth_category"
+    ]
+    assert {option["value"] for option in cloth_parameters[0]["options"]} == {
+        "all",
+        "upper",
+        "lower",
+        "full",
+    }
+
+    sam_parameters = options["sam"]["capabilities"]["parameters"]
+    assert [parameter["name"] for parameter in sam_parameters] == [
+        "sam_prompt",
+        "sam_model",
+        "sam_quant",
+    ]
+    assert options["birefnet-general"]["capabilities"]["parameters"] == []

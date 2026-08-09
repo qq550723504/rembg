@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 SUPPORTED_MODELS = (
     "birefnet-general",
@@ -63,6 +63,69 @@ class ModelCapabilities(TypedDict):
     supports_alpha_matting: bool
     supports_post_process_mask: bool
     experimental: bool
+    parameters: list["ModelParameter"]
+
+
+class ParameterOption(TypedDict):
+    value: str
+    label: str
+
+
+class ModelParameter(TypedDict, total=False):
+    name: str
+    label: str
+    type: Literal["checkbox", "json", "select"]
+    default: bool | str | None
+    options: list[ParameterOption]
+    placeholder: str
+    description: str
+
+
+MODEL_PARAMETER_DEFINITIONS: dict[str, list[ModelParameter]] = {
+    "u2net_cloth_seg": [
+        {
+            "name": "cloth_category",
+            "label": "服装类别",
+            "type": "select",
+            "default": "all",
+            "options": [
+                {"value": "all", "label": "全部"},
+                {"value": "upper", "label": "上装"},
+                {"value": "lower", "label": "下装"},
+                {"value": "full", "label": "整套"},
+            ],
+            "description": "选择要保留的服装区域。",
+        }
+    ],
+    "sam": [
+        {
+            "name": "sam_prompt",
+            "label": "SAM 提示点/框",
+            "type": "json",
+            "default": None,
+            "placeholder": '[{"type":"point","label":1,"data":[512,512]}]',
+            "description": "JSON 数组；留空时使用图片中心点。",
+        },
+        {
+            "name": "sam_model",
+            "label": "SAM 模型规格",
+            "type": "select",
+            "default": "sam_vit_b_01ec64",
+            "options": [
+                {"value": "sam_vit_b_01ec64", "label": "ViT-B（推荐）"},
+                {"value": "sam_vit_l_0b3195", "label": "ViT-L"},
+                {"value": "sam_vit_h_4b8939", "label": "ViT-H"},
+            ],
+        },
+        {
+            "name": "sam_quant",
+            "label": "使用量化模型",
+            "type": "checkbox",
+            "default": False,
+            "description": "降低显存占用，但可能影响边缘质量。",
+        },
+    ],
+}
 
 
 MODEL_CAPABILITIES: dict[str, ModelCapabilities] = {
@@ -71,6 +134,7 @@ MODEL_CAPABILITIES: dict[str, ModelCapabilities] = {
         "supports_alpha_matting": True,
         "supports_post_process_mask": True,
         "experimental": name == "sam",
+        "parameters": MODEL_PARAMETER_DEFINITIONS.get(name, []),
     }
     for name in SUPPORTED_MODELS
 }
